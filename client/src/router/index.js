@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getToken } from '../utils/auth'
 
 const routes = [
   {
@@ -25,7 +26,7 @@ const router = createRouter({
 
 // 导航守卫
 router.beforeEach((to, from, next) => {
-  const isAuthenticated = localStorage.getItem('token')
+  const isAuthenticated = getToken()
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     next('/login')

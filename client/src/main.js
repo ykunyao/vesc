@@ -5,12 +5,13 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import { io } from 'socket.io-client'
 import { API_BASE_URL } from './config'
+import { clearAuth, getToken } from './utils/auth'
 
 const app = createApp(App)
 
 // 创建 socket 连接的函数
 const createSocket = () => {
-  const token = localStorage.getItem('token')
+  const token = getToken()
   if (!token) return null
 
   const socket = io(API_BASE_URL, {
@@ -24,8 +25,7 @@ const createSocket = () => {
   socket.on('connect_error', (error) => {
     console.error('Socket connection error:', error.message)
     if (error.message === 'UNAUTHORIZED') {
-      localStorage.removeItem('token')
-      localStorage.removeItem('username')
+      clearAuth()
       router.push('/login')
     }
   })

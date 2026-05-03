@@ -129,8 +129,8 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { Message, Lock, User } from '@element-plus/icons-vue';
-import axios from 'axios';
-import { API_BASE_URL } from '../config';
+import { login, register } from '../api/auth';
+import { setAuth } from '../utils/auth';
 
 const router = useRouter();
 const loginVideo = ref(null);
@@ -214,17 +214,16 @@ const submitLogin = async () => {
 
     try {
         loading.value = true;
-        const response = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+        const response = await login({
             email: loginForm.value.email,
             password: loginForm.value.password
         });
 
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('username', response.data.username);
+        setAuth(response.data);
         ElMessage.success('登录成功');
         router.push('/chat');
     } catch (error) {
-        ElMessage.error(error.response?.data?.message || '登录失败');
+        ElMessage.error(error.message || '登录失败');
     } finally {
         loading.value = false;
     }
@@ -252,7 +251,7 @@ const submitRegister = async () => {
 
     try {
         loading.value = true;
-        const response = await axios.post(`${API_BASE_URL}/api/auth/register`, {
+        await register({
             username: registerForm.value.username,
             email: registerForm.value.email,
             password: registerForm.value.password
@@ -267,7 +266,7 @@ const submitRegister = async () => {
         };
         activeTab.value = 'login';
     } catch (error) {
-        ElMessage.error(error.response?.data?.message || '注册失败');
+        ElMessage.error(error.message || '注册失败');
     } finally {
         loading.value = false;
     }

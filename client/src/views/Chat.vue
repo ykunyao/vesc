@@ -26,8 +26,10 @@
   
   <script setup>
   import { ref, inject, onMounted, onUnmounted, nextTick } from 'vue';
+  import { ElMessage } from 'element-plus';
   import { useRouter } from 'vue-router';
   import MessageInput from '../components/MessageInput.vue';
+  import { clearAuth, getToken, getUsername } from '../utils/auth';
   
   const createSocket = inject('socket');
   const router = useRouter();
@@ -66,15 +68,15 @@
   
     socket.value.on('error', (error) => {
       console.error('Socket error:', error);
-      alert('连接出现问题，请稍后再试。');
+      ElMessage.error(error || '连接出现问题，请稍后再试。');
     });
   
     return true;
   };
   
   onMounted(() => {
-    const token = localStorage.getItem('token');
-    const username = localStorage.getItem('username');
+    const token = getToken();
+    const username = getUsername();
   
     if (!token || !username) {
       router.push('/login');
@@ -123,8 +125,7 @@
     if (socket.value) {
       socket.value.disconnect();
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('username');
+    clearAuth();
     router.push('/login');
   };
   </script>

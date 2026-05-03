@@ -3,6 +3,7 @@
     <input 
       v-model="newMessage" 
       placeholder="输入消息..." 
+      maxlength="1000"
       @keypress.enter.prevent="sendMessage"
     />
     <button type="button" @click="toggleEmojiPicker">😊</button>
