@@ -14,5 +14,7 @@ CREATE TABLE messages (
     sender_id INT NOT NULL,
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sender_id) REFERENCES users(id)
+    FOREIGN KEY (sender_id) REFERENCES users(id),
+    INDEX idx_messages_sender_id (sender_id),
+    INDEX idx_messages_created_at (created_at)
 );

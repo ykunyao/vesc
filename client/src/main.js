@@ -23,7 +23,7 @@ const createSocket = () => {
 
   socket.on('connect_error', (error) => {
     console.error('Socket connection error:', error.message)
-    if (error.message === '未认证' || error.message === 'Token 无效') {
+    if (error.message === 'UNAUTHORIZED') {
       localStorage.removeItem('token')
       localStorage.removeItem('username')
       router.push('/login')

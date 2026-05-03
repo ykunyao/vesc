@@ -10,6 +10,7 @@ const required = (name) => {
 
 module.exports = {
   port: process.env.PORT || 3000,
+  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   jwtSecret: required('JWT_SECRET'),
   db: {
     host: process.env.DB_HOST || 'localhost',

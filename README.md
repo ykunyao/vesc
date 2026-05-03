@@ -44,6 +44,12 @@ cd server
 mysql -u root -p < db.sql
 ```
 
+If your database already existed before the indexes were added, run the migration:
+
+```powershell
+mysql -u root -p < migrations/001_add_message_indexes.sql
+```
+
 From the project root, start the backend:
 
 ```powershell
@@ -64,6 +70,7 @@ Backend variables live in `server/.env`:
 
 ```env
 PORT=3000
+CLIENT_ORIGIN=http://localhost:5173
 JWT_SECRET=replace-with-a-long-random-secret
 DB_HOST=localhost
 DB_PORT=3306

@@ -9,14 +9,15 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
+const corsOptions = {
+  origin: config.clientOrigin,
+  methods: ['GET', 'POST']
+};
 const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
+  cors: corsOptions
 });
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 
@@ -24,14 +25,14 @@ app.use('/api/auth', authRoutes);
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) {
-    return next(new Error('未认证，请提供有效的令牌'));
+    return next(new Error('UNAUTHORIZED'));
   }
   try {
     const decoded = jwt.verify(token, config.jwtSecret);
     socket.user = decoded;
     next();
   } catch (err) {
-    next(new Error('Token 无效，请重新登录'));
+    next(new Error('UNAUTHORIZED'));
   }
 });
 
@@ -63,7 +64,17 @@ io.on('connection', async (socket) => {
   // 处理新消息
   socket.on('chat message', async (msg) => {
     try {
-      const newMessage = await Message.create(socket.user.userId, msg);
+      const content = typeof msg === 'string' ? msg.trim() : '';
+      if (!content) {
+        socket.emit('error', '消息不能为空');
+        return;
+      }
+      if (content.length > 1000) {
+        socket.emit('error', '消息不能超过 1000 个字符');
+        return;
+      }
+
+      const newMessage = await Message.create(socket.user.userId, content);
       if (newMessage) {
         io.emit('chat message', newMessage);
       }

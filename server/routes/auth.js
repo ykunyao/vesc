@@ -5,10 +5,42 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const config = require('../config/env');
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeAuthInput = ({ username = '', email = '', password = '' }) => ({
+  username: String(username).trim(),
+  email: String(email).trim().toLowerCase(),
+  password: String(password)
+});
+
+const validateRegisterInput = ({ username, email, password }) => {
+  if (username.length < 2 || username.length > 50) {
+    return '用户名长度需要在 2 到 50 个字符之间';
+  }
+  if (!emailPattern.test(email) || email.length > 100) {
+    return '请输入有效的邮箱地址';
+  }
+  if (password.length < 6 || password.length > 72) {
+    return '密码长度需要在 6 到 72 个字符之间';
+  }
+  return null;
+};
+
+const validateLoginInput = ({ email, password }) => {
+  if (!emailPattern.test(email) || !password) {
+    return '邮箱或密码错误';
+  }
+  return null;
+};
+
 // 注册路由
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password } = normalizeAuthInput(req.body || {});
+    const validationError = validateRegisterInput({ username, email, password });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
 
     // 检查用户是否已存在
     const [existingUsers] = await db.execute(
@@ -46,12 +78,16 @@ router.post('/register', async (req, res) => {
 // 登录路由
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = normalizeAuthInput(req.body || {});
+    const validationError = validateLoginInput({ email, password });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
 
     // 查找用户
     const [users] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) {
-      return res.status(404).json({ message: '用户不存在' });
+      return res.status(400).json({ message: '邮箱或密码错误' });
     }
 
     const user = users[0];
@@ -59,7 +95,7 @@ router.post('/login', async (req, res) => {
     // 验证密码
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(400).json({ message: '密码错误' });
+      return res.status(400).json({ message: '邮箱或密码错误' });
     }
 
     // 生成 JWT
