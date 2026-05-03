@@ -3,8 +3,10 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');
+const conversationRoutes = require('./routes/conversations');
 const config = require('./config/env');
 const Message = require('./models/Message');
+const Conversation = require('./models/Conversation');
 const jwt = require('jsonwebtoken');
 
 const app = express();
@@ -20,6 +22,7 @@ const io = socketIo(server, {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api/auth', authRoutes);
+app.use('/api/conversations', conversationRoutes);
 
 // 身份验证中间件
 io.use((socket, next) => {
@@ -39,32 +42,57 @@ io.use((socket, next) => {
 // Socket.IO 连接处理
 io.on('connection', async (socket) => {
   console.log(`用户 ${socket.user.username} 已连接`);
+  await Conversation.ensureDefaultConversation(socket.user.userId);
+
+  const joinConversation = async (conversationId) => {
+    const isMember = await Conversation.isMember(conversationId, socket.user.userId);
+    if (!isMember) {
+      socket.emit('error', '无权访问该会话');
+      return false;
+    }
+
+    socket.join(`conversation:${conversationId}`);
+    return true;
+  };
 
   // 获取历史消息
-  const getMessages = async () => {
+  const getMessages = async (conversationId) => {
     try {
-      const messages = await Message.getRecentMessages(50);
+      const messages = await Message.getRecentMessages(conversationId, 50);
       if (messages && Array.isArray(messages)) {
-        socket.emit('history messages', messages);
+        socket.emit('history messages', { conversationId, messages });
       } else {
         console.log('没有历史消息或消息格式不正确');
-        socket.emit('history messages', []);
+        socket.emit('history messages', { conversationId, messages: [] });
       }
     } catch (error) {
       console.log('获取历史消息时发生错误，返回空数组');
-      socket.emit('history messages', []);
+      socket.emit('history messages', { conversationId, messages: [] });
     }
   };
 
-  // 初始化加载消息
-  await getMessages().catch(err => {
-    console.log('消息处理失败，但不影响程序运行');
+  socket.on('join conversation', async (conversationId) => {
+    const targetConversationId = Number(conversationId);
+    if (!Number.isInteger(targetConversationId) || targetConversationId <= 0) {
+      socket.emit('error', '会话不存在');
+      return;
+    }
+
+    if (await joinConversation(targetConversationId)) {
+      await getMessages(targetConversationId);
+    }
   });
 
   // 处理新消息
-  socket.on('chat message', async (msg) => {
+  socket.on('chat message', async (payload) => {
     try {
-      const content = typeof msg === 'string' ? msg.trim() : '';
+      const conversationId = Number(payload?.conversationId);
+      const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
+
+      if (!Number.isInteger(conversationId) || conversationId <= 0) {
+        socket.emit('error', '会话不存在');
+        return;
+      }
       if (!content) {
         socket.emit('error', '消息不能为空');
         return;
@@ -73,10 +101,13 @@ io.on('connection', async (socket) => {
         socket.emit('error', '消息不能超过 1000 个字符');
         return;
       }
+      if (!(await joinConversation(conversationId))) {
+        return;
+      }
 
-      const newMessage = await Message.create(socket.user.userId, content);
+      const newMessage = await Message.create(conversationId, socket.user.userId, content);
       if (newMessage) {
-        io.emit('chat message', newMessage);
+        io.to(`conversation:${conversationId}`).emit('chat message', newMessage);
       }
     } catch (error) {
       console.error('消息发送失败:', error);

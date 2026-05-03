@@ -48,6 +48,7 @@ If your database already existed before the indexes were added, run the migratio
 
 ```powershell
 mysql -u root -p < migrations/001_add_message_indexes.sql
+mysql -u root -p < migrations/002_add_conversations.sql
 ```
 
 From the project root, start the backend:

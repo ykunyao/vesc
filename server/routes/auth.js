@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const config = require('../config/env');
+const Conversation = require('../models/Conversation');
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -60,6 +61,7 @@ router.post('/register', async (req, res) => {
       'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
       [username, email, hashedPassword]
     );
+    await Conversation.ensureDefaultConversation(result.insertId);
 
     // 生成 JWT
     const token = jwt.sign(
@@ -91,6 +93,7 @@ router.post('/login', async (req, res) => {
     }
 
     const user = users[0];
+    await Conversation.ensureDefaultConversation(user.id);
 
     // 验证密码
     const isValidPassword = await bcrypt.compare(password, user.password);

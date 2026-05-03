@@ -1,43 +1,66 @@
 <template>
     <div class="chat-container">
-      <div class="chat-header">
-        <h2>:)</h2>
-        <div class="user-info">
-          <span>{{ currentUsername }}</span>
-          <button @click="handleLogout" class="logout-btn">退出登录</button>
-        </div>
-      </div>
-  
-      <div class="messages" ref="messagesContainer">
-        <div v-for="msg in messages" 
-             :key="msg.id" 
-             :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
-          <div class="message-header">
-            <span class="username">{{ msg.username }}</span>
-            <span class="time">{{ formatTime(msg.created_at) }}</span>
+      <aside class="conversation-list">
+        <div class="conversation-title">会话</div>
+        <button
+          v-for="conversation in conversations"
+          :key="conversation.id"
+          :class="['conversation-item', { active: conversation.id === activeConversationId }]"
+          @click="selectConversation(conversation.id)"
+        >
+          <span class="conversation-name">{{ conversation.name || '未命名会话' }}</span>
+          <span class="conversation-type">{{ conversation.type === 'direct' ? '私信' : '群聊' }}</span>
+        </button>
+      </aside>
+
+      <main class="chat-main">
+        <div class="chat-header">
+          <h2>{{ activeConversationName }}</h2>
+          <div class="user-info">
+            <span>{{ currentUsername }}</span>
+            <button @click="handleLogout" class="logout-btn">退出登录</button>
           </div>
-          <div class="message-content">{{ msg.content }}</div>
         </div>
-      </div>
   
-      <MessageInput @sendMessage="sendMessage" />
+        <div class="messages" ref="messagesContainer">
+          <div v-for="msg in messages" 
+               :key="msg.id" 
+               :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
+            <div class="message-header">
+              <span class="username">{{ msg.username }}</span>
+              <span class="time">{{ formatTime(msg.created_at) }}</span>
+            </div>
+            <div class="message-content">{{ msg.content }}</div>
+          </div>
+        </div>
+  
+        <MessageInput @sendMessage="sendMessage" />
+      </main>
     </div>
   </template>
   
   <script setup>
-  import { ref, inject, onMounted, onUnmounted, nextTick } from 'vue';
+  import { ref, computed, inject, onMounted, onUnmounted, nextTick } from 'vue';
   import { ElMessage } from 'element-plus';
   import { useRouter } from 'vue-router';
   import MessageInput from '../components/MessageInput.vue';
+  import { getConversations } from '../api/conversations';
   import { clearAuth, getToken, getUsername } from '../utils/auth';
   
   const createSocket = inject('socket');
   const router = useRouter();
   const socket = ref(null);
+  const conversations = ref([]);
+  const activeConversationId = ref(null);
   const messages = ref([]);
   const currentUserId = ref(null);
   const currentUsername = ref('');
   const messagesContainer = ref(null);
+
+  const activeConversationName = computed(() => {
+    const activeConversation = conversations.value.find((item) => item.id === activeConversationId.value);
+    return activeConversation?.name || ':)';
+  });
   
   const scrollToBottom = async () => {
     await nextTick();
@@ -55,13 +78,14 @@
       return false;
     }
   
-    // 监听消息
     socket.value.on('chat message', (msg) => {
+      if (msg.conversation_id !== activeConversationId.value) return;
       messages.value.push(msg);
       scrollToBottom();
     });
   
-    socket.value.on('history messages', (msgs) => {
+    socket.value.on('history messages', ({ conversationId, messages: msgs }) => {
+      if (conversationId !== activeConversationId.value) return;
       messages.value = msgs;
       scrollToBottom();
     });
@@ -72,6 +96,24 @@
     });
   
     return true;
+  };
+
+  const loadConversations = async () => {
+    const response = await getConversations();
+    conversations.value = response.data.conversations;
+
+    if (!activeConversationId.value && conversations.value.length > 0) {
+      selectConversation(conversations.value[0].id);
+    }
+  };
+
+  const selectConversation = (conversationId) => {
+    activeConversationId.value = conversationId;
+    messages.value = [];
+
+    if (socket.value) {
+      socket.value.emit('join conversation', conversationId);
+    }
   };
   
   onMounted(() => {
@@ -92,6 +134,10 @@
       if (!initializeSocket()) {
         return;
       }
+
+      loadConversations().catch((error) => {
+        ElMessage.error(error.message || '获取会话失败');
+      });
     } catch (error) {
       console.error('Token parsing error:', error);
       router.push('/login');
@@ -106,8 +152,15 @@
   });
   
   const sendMessage = (message) => {
-    console.log('Sending message:', message); // 添加调试信息
-    socket.value.emit('chat message', message);
+    if (!activeConversationId.value) {
+      ElMessage.error('请先选择会话');
+      return;
+    }
+
+    socket.value.emit('chat message', {
+      conversationId: activeConversationId.value,
+      content: message
+    });
   };
   
   const formatTime = (time) => {
@@ -134,8 +187,60 @@
     .chat-container {
       height: 100vh;
       display: flex;
-      flex-direction: column;
       background-color: #f5f5f5;
+    }
+
+    .conversation-list {
+      width: 240px;
+      background: white;
+      border-right: 1px solid #eee;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 12px;
+      gap: 8px;
+    }
+
+    .conversation-title {
+      font-size: 14px;
+      color: #666;
+      padding: 0 8px 8px;
+    }
+
+    .conversation-item {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: #333;
+      padding: 10px 12px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .conversation-item:hover,
+    .conversation-item.active {
+      background: #fff0f3;
+    }
+
+    .conversation-name {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .conversation-type {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .chat-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
     
     .chat-header {
