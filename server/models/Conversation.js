@@ -44,6 +44,147 @@ class Conversation {
     return rows.length > 0;
   }
 
+  static async getById(conversationId) {
+    const [rows] = await pool.execute(
+      `SELECT id, type, name, owner_id, created_at, updated_at
+       FROM conversations
+       WHERE id = ?
+       LIMIT 1`,
+      [conversationId]
+    );
+
+    return rows[0] || null;
+  }
+
+  static async getMember(conversationId, userId) {
+    const [rows] = await pool.execute(
+      `SELECT cm.id, cm.conversation_id, cm.user_id, cm.role, cm.joined_at, u.username, u.email
+       FROM conversation_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.conversation_id = ? AND cm.user_id = ?
+       LIMIT 1`,
+      [conversationId, userId]
+    );
+
+    return rows[0] || null;
+  }
+
+  static async listMembers(conversationId) {
+    const [rows] = await pool.execute(
+      `SELECT cm.user_id AS id, u.username, u.email, cm.role, cm.joined_at
+       FROM conversation_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.conversation_id = ?
+       ORDER BY FIELD(cm.role, 'owner', 'admin', 'member'), cm.joined_at ASC`,
+      [conversationId]
+    );
+
+    return rows;
+  }
+
+  static async addMembers(conversationId, actorUserId, memberIds = []) {
+    const conversation = await this.getById(conversationId);
+    if (!conversation || conversation.type !== 'group') {
+      throw new Error('群聊不存在');
+    }
+
+    const actor = await this.getMember(conversationId, actorUserId);
+    if (!actor) {
+      throw new Error('无权管理该群聊');
+    }
+
+    const uniqueMemberIds = [...new Set(memberIds.map(Number))]
+      .filter((id) => Number.isInteger(id) && id > 0 && id !== actorUserId);
+    if (uniqueMemberIds.length === 0) {
+      throw new Error('请选择要邀请的成员');
+    }
+
+    const [users] = await pool.query(
+      'SELECT id FROM users WHERE id IN (?)',
+      [uniqueMemberIds]
+    );
+    const existingUserIds = new Set(users.map((user) => user.id));
+    if (existingUserIds.size === 0) {
+      throw new Error('用户不存在');
+    }
+
+    for (const userId of existingUserIds) {
+      await this.addMember(conversationId, userId, 'member');
+    }
+
+    await pool.execute(
+      'UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [conversationId]
+    );
+
+    return this.listMembers(conversationId);
+  }
+
+  static async removeMember(conversationId, actorUserId, targetUserId) {
+    const conversation = await this.getById(conversationId);
+    if (!conversation || conversation.type !== 'group') {
+      throw new Error('群聊不存在');
+    }
+
+    const actor = await this.getMember(conversationId, actorUserId);
+    if (!actor) {
+      throw new Error('无权管理该群聊');
+    }
+
+    const target = await this.getMember(conversationId, targetUserId);
+    if (!target) {
+      throw new Error('成员不存在');
+    }
+
+    const isSelfLeave = actorUserId === targetUserId;
+    if (!isSelfLeave && actor.role !== 'owner') {
+      throw new Error('只有群主可以移除成员');
+    }
+    if (!isSelfLeave && target.role === 'owner') {
+      throw new Error('不能移除群主');
+    }
+
+    await pool.execute(
+      'DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+      [conversationId, targetUserId]
+    );
+
+    const members = await this.listMembers(conversationId);
+    if (members.length === 0) {
+      await pool.execute('DELETE FROM conversations WHERE id = ?', [conversationId]);
+      return [];
+    }
+
+    if (isSelfLeave && actor.role === 'owner') {
+      await pool.execute(
+        `UPDATE conversation_members
+         SET role = 'owner'
+         WHERE conversation_id = ?
+         ORDER BY joined_at ASC
+         LIMIT 1`,
+        [conversationId]
+      );
+      const [newOwner] = await pool.execute(
+        `SELECT user_id FROM conversation_members
+         WHERE conversation_id = ? AND role = 'owner'
+         LIMIT 1`,
+        [conversationId]
+      );
+      await pool.execute(
+        'UPDATE conversations SET owner_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newOwner[0]?.user_id || null, conversationId]
+      );
+      return this.listMembers(conversationId);
+    }
+
+    await pool.execute(
+      'UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [conversationId]
+    );
+
+    return members;
+  }
+
   static async listForUser(userId) {
     await this.ensureDefaultConversation(userId);
 

@@ -50,7 +50,17 @@
 
       <main class="chat-main">
         <div class="chat-header">
-          <h2>{{ activeConversationName }}</h2>
+          <div class="chat-title">
+            <h2>{{ activeConversationName }}</h2>
+            <button
+              v-if="isActiveGroup"
+              class="header-action-btn"
+              type="button"
+              @click="openGroupDetailDialog"
+            >
+              群详情
+            </button>
+          </div>
           <div class="user-info">
             <span>{{ currentUsername }}</span>
             <button @click="handleLogout" class="logout-btn">退出登录</button>
@@ -98,6 +108,57 @@
           <button class="compact-btn" type="button" @click="submitGroupConversation">创建</button>
         </template>
       </el-dialog>
+
+      <el-dialog v-model="groupDetailVisible" title="群详情" width="480px">
+        <div class="group-detail">
+          <div class="group-detail-header">
+            <div>
+              <div class="group-detail-name">{{ groupDetailConversation?.name || activeConversationName }}</div>
+              <div class="group-detail-meta">{{ groupMembers.length }} 位成员</div>
+            </div>
+            <button class="compact-btn ghost" type="button" @click="leaveCurrentGroup">退出群聊</button>
+          </div>
+
+          <div class="group-invite">
+            <el-input
+              v-model="memberSearchKeyword"
+              placeholder="搜索用户邀请入群"
+              @keyup.enter="searchInviteUsers"
+            />
+            <button class="compact-btn" type="button" @click="searchInviteUsers">搜索</button>
+          </div>
+          <div v-if="memberSearchResults.length" class="group-user-list">
+            <label v-for="user in memberSearchResults" :key="user.id" class="group-user-item">
+              <input
+                type="checkbox"
+                :value="user.id"
+                v-model="selectedInviteMemberIds"
+                :disabled="isGroupMember(user.id)"
+              />
+              <span>{{ user.username }}</span>
+              <span class="group-user-email">{{ isGroupMember(user.id) ? '已在群内' : user.email }}</span>
+            </label>
+            <button class="compact-btn" type="button" @click="submitInviteMembers">邀请选中成员</button>
+          </div>
+
+          <div class="member-list">
+            <div v-for="member in groupMembers" :key="member.id" class="member-item">
+              <div>
+                <span class="member-name">{{ member.username }}</span>
+                <span class="member-role">{{ formatMemberRole(member.role) }}</span>
+              </div>
+              <button
+                v-if="canRemoveMember(member)"
+                class="danger-link"
+                type="button"
+                @click="removeGroupMember(member.id)"
+              >
+                移除
+              </button>
+            </div>
+          </div>
+        </div>
+      </el-dialog>
     </div>
   </template>
   
@@ -106,7 +167,14 @@
   import { ElMessage } from 'element-plus';
   import { useRouter } from 'vue-router';
   import MessageInput from '../components/MessageInput.vue';
-  import { createDirectConversation, createGroupConversation, getConversations } from '../api/conversations';
+  import {
+    addConversationMembers,
+    createDirectConversation,
+    createGroupConversation,
+    getConversationMembers,
+    getConversations,
+    removeConversationMember
+  } from '../api/conversations';
   import { searchUsers } from '../api/users';
   import { clearAuth, getToken, getUsername } from '../utils/auth';
   
@@ -122,6 +190,13 @@
   const groupSearchKeyword = ref('');
   const groupSearchResults = ref([]);
   const selectedGroupMemberIds = ref([]);
+  const groupDetailVisible = ref(false);
+  const groupDetailConversation = ref(null);
+  const groupMembers = ref([]);
+  const currentGroupMember = ref(null);
+  const memberSearchKeyword = ref('');
+  const memberSearchResults = ref([]);
+  const selectedInviteMemberIds = ref([]);
   const unreadCounts = ref({});
   const messages = ref([]);
   const currentUserId = ref(null);
@@ -129,8 +204,19 @@
   const messagesContainer = ref(null);
 
   const activeConversationName = computed(() => {
-    const activeConversation = conversations.value.find((item) => item.id === activeConversationId.value);
-    return activeConversation?.name || ':)';
+    return activeConversation.value?.name || ':)';
+  });
+
+  const activeConversation = computed(() => {
+    return conversations.value.find((item) => item.id === activeConversationId.value) || null;
+  });
+
+  const isActiveGroup = computed(() => {
+    return activeConversation.value?.type === 'group';
+  });
+
+  const isCurrentUserGroupOwner = computed(() => {
+    return currentGroupMember.value?.role === 'owner';
   });
   
   const scrollToBottom = async () => {
@@ -283,6 +369,96 @@
     } catch (error) {
       ElMessage.error(error.message || '创建群聊失败');
     }
+  };
+
+  const loadGroupMembers = async () => {
+    if (!activeConversationId.value) return;
+
+    const response = await getConversationMembers(activeConversationId.value);
+    groupDetailConversation.value = response.data.conversation;
+    currentGroupMember.value = response.data.currentMember;
+    groupMembers.value = response.data.members;
+  };
+
+  const openGroupDetailDialog = async () => {
+    try {
+      groupDetailVisible.value = true;
+      memberSearchKeyword.value = '';
+      memberSearchResults.value = [];
+      selectedInviteMemberIds.value = [];
+      await loadGroupMembers();
+    } catch (error) {
+      groupDetailVisible.value = false;
+      ElMessage.error(error.message || '获取群详情失败');
+    }
+  };
+
+  const searchInviteUsers = async () => {
+    if (!memberSearchKeyword.value.trim()) {
+      memberSearchResults.value = [];
+      return;
+    }
+
+    const response = await searchUsers(memberSearchKeyword.value);
+    memberSearchResults.value = response.data.users;
+  };
+
+  const isGroupMember = (userId) => {
+    return groupMembers.value.some((member) => member.id === userId);
+  };
+
+  const submitInviteMembers = async () => {
+    try {
+      if (selectedInviteMemberIds.value.length === 0) {
+        ElMessage.error('请选择要邀请的成员');
+        return;
+      }
+
+      const response = await addConversationMembers(activeConversationId.value, selectedInviteMemberIds.value);
+      groupMembers.value = response.data.members;
+      selectedInviteMemberIds.value = [];
+      memberSearchResults.value = [];
+      memberSearchKeyword.value = '';
+      ElMessage.success('已邀请成员入群');
+    } catch (error) {
+      ElMessage.error(error.message || '邀请成员失败');
+    }
+  };
+
+  const removeGroupMember = async (userId) => {
+    try {
+      const response = await removeConversationMember(activeConversationId.value, userId);
+      groupMembers.value = response.data.members;
+      ElMessage.success('已移除成员');
+    } catch (error) {
+      ElMessage.error(error.message || '移除成员失败');
+    }
+  };
+
+  const leaveCurrentGroup = async () => {
+    try {
+      await removeConversationMember(activeConversationId.value, currentUserId.value);
+      groupDetailVisible.value = false;
+      activeConversationId.value = null;
+      messages.value = [];
+      await loadConversations();
+      ElMessage.success('已退出群聊');
+    } catch (error) {
+      ElMessage.error(error.message || '退出群聊失败');
+    }
+  };
+
+  const canRemoveMember = (member) => {
+    return isCurrentUserGroupOwner.value && member.id !== currentUserId.value && member.role !== 'owner';
+  };
+
+  const formatMemberRole = (role) => {
+    const roleMap = {
+      owner: '群主',
+      admin: '管理员',
+      member: '成员'
+    };
+    return roleMap[role] || '成员';
   };
   
   onMounted(() => {
@@ -561,6 +737,68 @@
       color: #999;
       font-size: 12px;
     }
+
+    .group-detail {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      color: #333;
+    }
+
+    .group-detail-header,
+    .group-invite {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .group-detail-name {
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .group-detail-meta {
+      margin-top: 4px;
+      color: #999;
+      font-size: 12px;
+    }
+
+    .member-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .member-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    .member-name {
+      font-weight: 600;
+    }
+
+    .member-role {
+      margin-left: 8px;
+      color: #999;
+      font-size: 12px;
+    }
+
+    .danger-link {
+      padding: 4px 8px;
+      background: transparent;
+      color: #f56c6c;
+      border: none;
+      font-size: 12px;
+    }
     
     .chat-header {
       padding: 1rem 2rem;
@@ -570,6 +808,21 @@
       justify-content: space-between;
       align-items: center;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .chat-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-action-btn {
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.18);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 999px;
+      font-size: 12px;
     }
     
     .user-info {
