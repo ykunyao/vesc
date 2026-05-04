@@ -10,6 +10,10 @@
     <div class="composer-footer">
       <span class="composer-hint">Enter 发送，Shift + Enter 换行</span>
       <div class="composer-actions">
+        <label class="image-btn" title="发送图片">
+          图
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="selectImage" />
+        </label>
         <button :class="['emoji-btn', { active: showEmojiPicker }]" type="button" @click="toggleEmojiPicker">☻</button>
         <button class="send-btn" type="submit" :disabled="!newMessage.trim()">➤</button>
       </div>
@@ -24,7 +28,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import EmojiPicker from './EmojiPicker.vue';
 
-const emit = defineEmits(['sendMessage']);
+const emit = defineEmits(['sendMessage', 'sendImage']);
 
 const newMessage = ref('');
 const showEmojiPicker = ref(false);
@@ -61,6 +65,14 @@ const sendMessage = () => {
     emit('sendMessage', trimmedMessage);
     newMessage.value = '';
   }
+};
+
+const selectImage = (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+
+  emit('sendImage', file);
 };
 
 onMounted(() => {
@@ -127,12 +139,31 @@ button {
   transition: background-color 0.3s;
 }
 
+.image-btn,
 .emoji-btn,
 .send-btn {
   height: 36px;
   color: #6f7f98;
   background: #f4f8fb;
   border-radius: 12px;
+}
+
+.image-btn {
+  position: relative;
+  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.image-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .emoji-btn {

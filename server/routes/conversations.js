@@ -1,9 +1,56 @@
 const express = require('express');
+const fs = require('fs');
+const multer = require('multer');
+const path = require('path');
 const auth = require('../middleware/auth');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 
 const router = express.Router();
+const messageUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
+
+fs.mkdirSync(messageUploadDir, { recursive: true });
+
+const imageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, messageUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.user.userId}-${Date.now()}${ext}`);
+  }
+});
+
+const imageUpload = multer({
+  storage: imageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      cb(new Error('图片仅支持 jpg、png、webp 或 gif'));
+      return;
+    }
+
+    cb(null, true);
+  }
+});
+
+const handleImageUpload = (req, res, next) => {
+  imageUpload.single('image')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: '图片不能超过 5MB' });
+    }
+
+    return res.status(400).json({ message: error.message || '图片上传失败' });
+  });
+};
 
 router.use(auth);
 
@@ -98,6 +145,34 @@ router.delete('/:id/members/:userId', async (req, res) => {
   } catch (error) {
     console.error('移除群成员失败:', error);
     res.status(400).json({ message: error.message || '移除群成员失败' });
+  }
+});
+
+router.post('/:id/images', handleImageUpload, async (req, res) => {
+  try {
+    const conversationId = Number(req.params.id);
+    if (!Number.isInteger(conversationId) || conversationId <= 0) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ message: '会话不存在' });
+    }
+
+    const isMember = await Conversation.isMember(conversationId, req.user.userId);
+    if (!isMember) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      return res.status(403).json({ message: '无权访问该会话' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: '请选择图片' });
+    }
+
+    res.status(201).json({ mediaUrl: `/uploads/messages/${req.file.filename}` });
+  } catch (error) {
+    if (req.file?.path) {
+      fs.unlink(req.file.path, () => {});
+    }
+    console.error('上传聊天图片失败:', error);
+    res.status(400).json({ message: error.message || '上传聊天图片失败' });
   }
 });
 

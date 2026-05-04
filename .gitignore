@@ -31,6 +31,9 @@ server/uploads/*
 !server/uploads/avatars/
 server/uploads/avatars/*
 !server/uploads/avatars/.gitkeep
+!server/uploads/messages/
+server/uploads/messages/*
+!server/uploads/messages/.gitkeep
 
 # Local learning notes
 PROJECT_NOTES.md

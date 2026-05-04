@@ -96,12 +96,20 @@
                 <span class="username">{{ msg.username }}</span>
                 <span class="time">{{ formatTime(msg.created_at) }}</span>
               </div>
-              <div class="message-content">{{ msg.content }}</div>
+              <button
+                v-if="msg.message_type === 'image'"
+                class="message-image-btn"
+                type="button"
+                @click="previewImage(msg.media_url)"
+              >
+                <img :src="resolveMediaUrl(msg.media_url)" alt="聊天图片" />
+              </button>
+              <div v-else class="message-content">{{ msg.content }}</div>
             </div>
           </div>
         </div>
   
-        <MessageInput @sendMessage="sendMessage" />
+        <MessageInput @sendMessage="sendMessage" @sendImage="sendImageMessage" />
       </main>
 
       <el-dialog v-model="groupDialogVisible" title="创建群聊" width="420px">
@@ -228,7 +236,8 @@
     createGroupConversation,
     getConversationMembers,
     getConversations,
-    removeConversationMember
+    removeConversationMember,
+    uploadConversationImage
   } from '../api/conversations';
   import { getCurrentUser, searchUsers, updateAvatar, uploadAvatar } from '../api/users';
   import { API_BASE_URL } from '../config';
@@ -305,7 +314,7 @@
 
     const updatedConversation = {
       ...conversations.value[index],
-      last_message: msg.content,
+      last_message: msg.message_type === 'image' ? '[图片]' : msg.content,
       last_message_at: msg.created_at,
       updated_at: msg.created_at
     };
@@ -337,6 +346,13 @@
     if (/^https?:\/\//i.test(avatarUrl)) return avatarUrl;
     if (avatarUrl.startsWith('/')) return `${API_BASE_URL}${avatarUrl}`;
     return avatarUrl;
+  };
+
+  const resolveMediaUrl = (mediaUrl = '') => {
+    if (!mediaUrl) return '';
+    if (/^https?:\/\//i.test(mediaUrl)) return mediaUrl;
+    if (mediaUrl.startsWith('/')) return `${API_BASE_URL}${mediaUrl}`;
+    return mediaUrl;
   };
 
   const loadCurrentUser = async () => {
@@ -646,8 +662,34 @@
 
     socket.value.emit('chat message', {
       conversationId: activeConversationId.value,
-      content: message
+      content: message,
+      messageType: 'text'
     });
+  };
+
+  const sendImageMessage = async (file) => {
+    if (!activeConversationId.value) {
+      ElMessage.error('请先选择会话');
+      return;
+    }
+
+    try {
+      const response = await uploadConversationImage(activeConversationId.value, file);
+      socket.value.emit('chat message', {
+        conversationId: activeConversationId.value,
+        content: '',
+        messageType: 'image',
+        mediaUrl: response.data.mediaUrl
+      });
+    } catch (error) {
+      ElMessage.error(error.message || '图片发送失败');
+    }
+  };
+
+  const previewImage = (mediaUrl) => {
+    const url = resolveMediaUrl(mediaUrl);
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
   
   const formatTime = (time) => {
@@ -1190,6 +1232,25 @@
     
     .message-content {
       line-height: 1.4;
+    }
+
+    .message-image-btn {
+      display: block;
+      max-width: min(320px, 58vw);
+      padding: 0;
+      overflow: hidden;
+      border: none;
+      border-radius: 14px;
+      background: transparent;
+      box-shadow: none;
+      cursor: zoom-in;
+    }
+
+    .message-image-btn img {
+      display: block;
+      max-width: 100%;
+      max-height: 260px;
+      object-fit: cover;
     }
 
     .avatar-form {

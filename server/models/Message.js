@@ -1,11 +1,12 @@
 const pool = require('../config/db');
 
 class Message {
-  static async create(conversationId, senderId, content) {
+  static async create(conversationId, senderId, { content = '', messageType = 'text', mediaUrl = null }) {
     try {
       const [result] = await pool.execute(
-        'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
-        [conversationId, senderId, content]
+        `INSERT INTO messages (conversation_id, sender_id, content, message_type, media_url)
+         VALUES (?, ?, ?, ?, ?)`,
+        [conversationId, senderId, content, messageType, mediaUrl]
       );
       
       // 获取刚插入的消息完整信息
@@ -14,6 +15,8 @@ class Message {
           m.id,
           m.conversation_id,
           m.content,
+          m.message_type,
+          m.media_url,
           m.created_at,
           m.sender_id,
           u.username,
@@ -47,6 +50,8 @@ class Message {
           m.id,
           m.conversation_id,
           m.content,
+          m.message_type,
+          m.media_url,
           m.created_at,
           m.sender_id,
           u.username,

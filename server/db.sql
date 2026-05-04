@@ -43,6 +43,8 @@ CREATE TABLE messages (
     conversation_id INT NOT NULL,
     sender_id INT NOT NULL,
     content TEXT NOT NULL,
+    message_type ENUM('text', 'image') NOT NULL DEFAULT 'text',
+    media_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users(id),

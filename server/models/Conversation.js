@@ -203,7 +203,11 @@ class Conversation {
          END AS avatar_url,
          c.created_at,
          c.updated_at,
-         last_message.content AS last_message,
+         CASE
+           WHEN last_message.message_type = 'image' THEN '[图片]'
+           ELSE last_message.content
+         END AS last_message,
+         last_message.message_type AS last_message_type,
          last_message.created_at AS last_message_at
        FROM conversations c
        JOIN conversation_members cm ON cm.conversation_id = c.id

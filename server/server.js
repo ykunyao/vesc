@@ -98,12 +98,14 @@ io.on('connection', async (socket) => {
     try {
       const conversationId = Number(payload?.conversationId);
       const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
+      const messageType = payload?.messageType === 'image' ? 'image' : 'text';
+      const mediaUrl = typeof payload?.mediaUrl === 'string' ? payload.mediaUrl.trim() : '';
 
       if (!Number.isInteger(conversationId) || conversationId <= 0) {
         socket.emit('error', '会话不存在');
         return;
       }
-      if (!content) {
+      if (messageType === 'text' && !content) {
         socket.emit('error', '消息不能为空');
         return;
       }
@@ -111,11 +113,19 @@ io.on('connection', async (socket) => {
         socket.emit('error', '消息不能超过 1000 个字符');
         return;
       }
+      if (messageType === 'image' && !mediaUrl.startsWith('/uploads/messages/')) {
+        socket.emit('error', '图片消息无效');
+        return;
+      }
       if (!(await joinConversation(conversationId))) {
         return;
       }
 
-      const newMessage = await Message.create(conversationId, socket.user.userId, content);
+      const newMessage = await Message.create(conversationId, socket.user.userId, {
+        content,
+        messageType,
+        mediaUrl: messageType === 'image' ? mediaUrl : null
+      });
       if (newMessage) {
         io.to(`conversation:${conversationId}`).emit('chat message', newMessage);
       }

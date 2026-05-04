@@ -19,3 +19,6 @@ uploads/*
 !uploads/avatars/
 uploads/avatars/*
 !uploads/avatars/.gitkeep
+!uploads/messages/
+uploads/messages/*
+!uploads/messages/.gitkeep
