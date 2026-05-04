@@ -91,42 +91,48 @@
         </div>
   
         <div class="messages" ref="messagesContainer">
-          <div
+          <template
             v-for="msg in messages"
             :key="msg.id"
-            :class="['message-row', { 'my-message-row': msg.sender_id === currentUserId }]"
           >
-            <span class="avatar message-avatar" :style="avatarStyle(msg.avatar_url, msg.username)">
-              <span v-if="!msg.avatar_url">{{ avatarText(msg.username) }}</span>
-            </span>
-            <div :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
-              <div class="message-header">
-                <span class="username">{{ msg.username }}</span>
-                <span class="time">{{ formatTime(msg.created_at) }}</span>
-              </div>
-              <div v-if="msg.status === 'revoked'" class="revoked-message">消息已撤回</div>
-              <button
-                v-else-if="msg.message_type === 'image'"
-                class="message-image-btn"
-                type="button"
-                @click="previewImage(msg.media_url)"
-              >
-                <img :src="resolveMediaUrl(msg.media_url)" alt="聊天图片" />
-              </button>
-              <div v-else class="message-content">{{ msg.content }}</div>
-              <div class="message-actions">
+            <div v-if="msg.status === 'revoked'" class="system-message-row">
+              <span>{{ formatRevokedMessage(msg) }}</span>
+            </div>
+            <div
+              v-else
+              :class="['message-row', { 'my-message-row': msg.sender_id === currentUserId }]"
+            >
+              <span class="avatar message-avatar" :style="avatarStyle(msg.avatar_url, msg.username)">
+                <span v-if="!msg.avatar_url">{{ avatarText(msg.username) }}</span>
+              </span>
+              <div :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
+                <div class="message-header">
+                  <span class="username">{{ msg.username }}</span>
+                  <span class="time">{{ formatTime(msg.created_at) }}</span>
+                </div>
                 <button
-                  v-if="msg.message_type === 'text' && msg.status !== 'revoked'"
+                  v-if="msg.message_type === 'image'"
+                  class="message-image-btn"
                   type="button"
-                  @click="copyMessage(msg)"
+                  @click="previewImage(msg.media_url)"
                 >
-                  复制
+                  <img :src="resolveMediaUrl(msg.media_url)" alt="聊天图片" />
                 </button>
-                <button v-if="canManageMessage(msg)" type="button" @click="deleteMessage(msg)">删除</button>
-                <button v-if="canManageMessage(msg)" type="button" @click="revokeMessage(msg)">撤回</button>
+                <div v-else class="message-content">{{ msg.content }}</div>
+                <div class="message-actions">
+                  <button
+                    v-if="msg.message_type === 'text'"
+                    type="button"
+                    @click="copyMessage(msg)"
+                  >
+                    复制
+                  </button>
+                  <button v-if="canManageMessage(msg)" type="button" @click="deleteMessage(msg)">删除</button>
+                  <button v-if="canManageMessage(msg)" type="button" @click="revokeMessage(msg)">撤回</button>
+                </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
   
         <MessageInput @sendMessage="sendMessage" @sendImage="sendImageMessage" />
@@ -509,6 +515,12 @@
     if (message.status === 'revoked') return '[已撤回]';
     if (message.message_type === 'image') return '[图片]';
     return message.content;
+  };
+
+  const formatRevokedMessage = (message) => {
+    return message.sender_id === currentUserId.value
+      ? '你撤回了一条消息'
+      : `${message.username} 撤回了一条消息`;
   };
 
   const loadCurrentUser = async () => {
@@ -1592,13 +1604,14 @@
     .messages {
       flex: 1;
       overflow-y: auto;
-      padding: 30px 28px 176px;
+      padding: 30px 28px 214px;
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
     
     .message {
+      position: relative;
       padding: 12px 14px;
       border: 1px solid #edf1f7;
       border-radius: 18px 18px 18px 6px;
@@ -1614,6 +1627,17 @@
       align-items: flex-start;
       gap: 8px;
       max-width: min(720px, 76%);
+    }
+
+    .system-message-row {
+      align-self: center;
+      max-width: min(520px, 82%);
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(232, 237, 244, 0.68);
+      color: #8b96a8;
+      font-size: 12px;
+      line-height: 1.4;
     }
 
     .my-message-row {
@@ -1683,22 +1707,29 @@
       object-fit: cover;
     }
 
-    .revoked-message {
-      color: #9aa5b6;
-      font-size: 13px;
-      font-style: italic;
-    }
-
     .message-actions {
+      position: absolute;
+      top: calc(100% - 2px);
+      left: 8px;
+      z-index: 2;
       display: flex;
       gap: 8px;
-      margin-top: 8px;
+      margin-top: 0;
+      padding: 8px 4px 4px;
       opacity: 0;
+      pointer-events: none;
       transition: opacity 0.18s;
     }
 
-    .message:hover .message-actions {
+    .my-message .message-actions {
+      right: 8px;
+      left: auto;
+    }
+
+    .message:hover .message-actions,
+    .message-actions:hover {
       opacity: 1;
+      pointer-events: auto;
     }
 
     .message-actions button {
