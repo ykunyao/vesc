@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const conversationRoutes = require('./routes/conversations');
+const userRoutes = require('./routes/users');
 const config = require('./config/env');
 const Message = require('./models/Message');
 const Conversation = require('./models/Conversation');
@@ -23,6 +24,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/users', userRoutes);
 
 // 身份验证中间件
 io.use((socket, next) => {

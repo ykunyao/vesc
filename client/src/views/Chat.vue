@@ -2,6 +2,28 @@
     <div class="chat-container">
       <aside class="conversation-list">
         <div class="conversation-title">会话</div>
+        <div class="conversation-actions">
+          <input
+            v-model="userSearchKeyword"
+            class="user-search-input"
+            placeholder="搜索用户"
+            @keyup.enter="searchUserList"
+          />
+          <button class="compact-btn" type="button" @click="searchUserList">搜索</button>
+          <button class="compact-btn ghost" type="button" @click="openGroupDialog">建群</button>
+        </div>
+        <div v-if="searchedUsers.length" class="search-results">
+          <button
+            v-for="user in searchedUsers"
+            :key="user.id"
+            class="search-result"
+            type="button"
+            @click="startDirectConversation(user.id)"
+          >
+            <span>{{ user.username }}</span>
+            <span>私信</span>
+          </button>
+        </div>
         <button
           v-for="conversation in conversations"
           :key="conversation.id"
@@ -36,6 +58,33 @@
   
         <MessageInput @sendMessage="sendMessage" />
       </main>
+
+      <el-dialog v-model="groupDialogVisible" title="创建群聊" width="420px">
+        <div class="group-form">
+          <el-input v-model="groupName" placeholder="群聊名称" maxlength="50" />
+          <el-input
+            v-model="groupSearchKeyword"
+            placeholder="搜索成员"
+            @keyup.enter="searchGroupUserList"
+          />
+          <button class="compact-btn" type="button" @click="searchGroupUserList">搜索成员</button>
+          <div class="group-user-list">
+            <label v-for="user in groupSearchResults" :key="user.id" class="group-user-item">
+              <input
+                type="checkbox"
+                :value="user.id"
+                v-model="selectedGroupMemberIds"
+              />
+              <span>{{ user.username }}</span>
+              <span class="group-user-email">{{ user.email }}</span>
+            </label>
+          </div>
+        </div>
+        <template #footer>
+          <button class="compact-btn ghost" type="button" @click="groupDialogVisible = false">取消</button>
+          <button class="compact-btn" type="button" @click="submitGroupConversation">创建</button>
+        </template>
+      </el-dialog>
     </div>
   </template>
   
@@ -44,7 +93,8 @@
   import { ElMessage } from 'element-plus';
   import { useRouter } from 'vue-router';
   import MessageInput from '../components/MessageInput.vue';
-  import { getConversations } from '../api/conversations';
+  import { createDirectConversation, createGroupConversation, getConversations } from '../api/conversations';
+  import { searchUsers } from '../api/users';
   import { clearAuth, getToken, getUsername } from '../utils/auth';
   
   const createSocket = inject('socket');
@@ -52,6 +102,13 @@
   const socket = ref(null);
   const conversations = ref([]);
   const activeConversationId = ref(null);
+  const userSearchKeyword = ref('');
+  const searchedUsers = ref([]);
+  const groupDialogVisible = ref(false);
+  const groupName = ref('');
+  const groupSearchKeyword = ref('');
+  const groupSearchResults = ref([]);
+  const selectedGroupMemberIds = ref([]);
   const messages = ref([]);
   const currentUserId = ref(null);
   const currentUsername = ref('');
@@ -107,12 +164,70 @@
     }
   };
 
+  const refreshAndSelectConversation = async (conversationId) => {
+    await loadConversations();
+    selectConversation(conversationId);
+  };
+
   const selectConversation = (conversationId) => {
     activeConversationId.value = conversationId;
     messages.value = [];
 
     if (socket.value) {
       socket.value.emit('join conversation', conversationId);
+    }
+  };
+
+  const searchUserList = async () => {
+    if (!userSearchKeyword.value.trim()) {
+      searchedUsers.value = [];
+      return;
+    }
+
+    const response = await searchUsers(userSearchKeyword.value);
+    searchedUsers.value = response.data.users;
+  };
+
+  const startDirectConversation = async (userId) => {
+    try {
+      const response = await createDirectConversation(userId);
+      searchedUsers.value = [];
+      userSearchKeyword.value = '';
+      await refreshAndSelectConversation(response.data.conversationId);
+    } catch (error) {
+      ElMessage.error(error.message || '创建私聊失败');
+    }
+  };
+
+  const openGroupDialog = () => {
+    groupDialogVisible.value = true;
+    groupName.value = '';
+    groupSearchKeyword.value = '';
+    groupSearchResults.value = [];
+    selectedGroupMemberIds.value = [];
+  };
+
+  const searchGroupUserList = async () => {
+    if (!groupSearchKeyword.value.trim()) {
+      groupSearchResults.value = [];
+      return;
+    }
+
+    const response = await searchUsers(groupSearchKeyword.value);
+    groupSearchResults.value = response.data.users;
+  };
+
+  const submitGroupConversation = async () => {
+    try {
+      const response = await createGroupConversation({
+        name: groupName.value,
+        memberIds: selectedGroupMemberIds.value
+      });
+
+      groupDialogVisible.value = false;
+      await refreshAndSelectConversation(response.data.conversationId);
+    } catch (error) {
+      ElMessage.error(error.message || '创建群聊失败');
     }
   };
   
@@ -206,6 +321,54 @@
       padding: 0 8px 8px;
     }
 
+    .conversation-actions {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .user-search-input {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .compact-btn {
+      border: none;
+      background: #f56c6c;
+      color: white;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .compact-btn.ghost {
+      background: #fff0f3;
+      color: #f56c6c;
+    }
+
+    .search-results {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .search-result {
+      border: none;
+      background: #fafafa;
+      color: #333;
+      padding: 8px 10px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
     .conversation-item {
       width: 100%;
       border: none;
@@ -241,6 +404,34 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+    }
+
+    .group-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .group-user-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .group-user-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 8px;
+      align-items: center;
+      color: #333;
+    }
+
+    .group-user-email {
+      grid-column: 2;
+      color: #999;
+      font-size: 12px;
     }
     
     .chat-header {
