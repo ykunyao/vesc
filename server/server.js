@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');
@@ -14,7 +15,7 @@ const app = express();
 const server = http.createServer(app);
 const corsOptions = {
   origin: config.clientOrigin,
-  methods: ['GET', 'POST']
+  methods: ['GET', 'POST', 'PATCH', 'DELETE']
 };
 const io = socketIo(server, {
   cors: corsOptions
@@ -22,6 +23,7 @@ const io = socketIo(server, {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/users', userRoutes);

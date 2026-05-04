@@ -1,8 +1,55 @@
 const express = require('express');
+const fs = require('fs');
+const multer = require('multer');
+const path = require('path');
 const auth = require('../middleware/auth');
 const db = require('../config/db');
 
 const router = express.Router();
+const avatarUploadDir = path.join(__dirname, '..', 'uploads', 'avatars');
+
+fs.mkdirSync(avatarUploadDir, { recursive: true });
+
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, avatarUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${req.user.userId}-${Date.now()}${ext}`);
+  }
+});
+
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: {
+    fileSize: 2 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      cb(new Error('头像仅支持 jpg、png、webp 或 gif 图片'));
+      return;
+    }
+
+    cb(null, true);
+  }
+});
+
+const handleAvatarUpload = (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ message: '头像图片不能超过 2MB' });
+    }
+
+    return res.status(400).json({ message: error.message || '上传头像失败' });
+  });
+};
 
 router.use(auth);
 
@@ -62,6 +109,33 @@ router.patch('/me/avatar', async (req, res) => {
   } catch (error) {
     console.error('更新头像失败:', error);
     res.status(400).json({ message: error.message || '更新头像失败' });
+  }
+});
+
+router.post('/me/avatar/upload', handleAvatarUpload, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: '请选择头像图片' });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    await db.execute(
+      'UPDATE users SET avatar_url = ? WHERE id = ?',
+      [avatarUrl, req.user.userId]
+    );
+
+    const [users] = await db.execute(
+      'SELECT id, username, email, avatar_url FROM users WHERE id = ? LIMIT 1',
+      [req.user.userId]
+    );
+
+    res.status(201).json({ user: users[0] });
+  } catch (error) {
+    if (req.file?.path) {
+      fs.unlink(req.file.path, () => {});
+    }
+    console.error('上传头像失败:', error);
+    res.status(400).json({ message: error.message || '上传头像失败' });
   }
 });
 

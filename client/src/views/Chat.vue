@@ -202,8 +202,12 @@
           <div class="avatar-preview avatar large" :style="avatarStyle(avatarDraftUrl, currentUsername)">
             <span v-if="!avatarDraftUrl">{{ avatarText(currentUsername) }}</span>
           </div>
+          <label class="upload-avatar-btn">
+            选择本地图片
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="handleAvatarFileChange" />
+          </label>
           <el-input v-model="avatarDraftUrl" placeholder="输入 http/https 头像图片地址" clearable />
-          <p class="avatar-help">先支持图片 URL。留空保存可以恢复默认头像。</p>
+          <p class="avatar-help">支持 jpg、png、webp、gif，最大 2MB。也可以继续使用图片 URL。</p>
         </div>
         <template #footer>
           <button class="compact-btn ghost" type="button" @click="avatarDialogVisible = false">取消</button>
@@ -226,7 +230,8 @@
     getConversations,
     removeConversationMember
   } from '../api/conversations';
-  import { getCurrentUser, searchUsers, updateAvatar } from '../api/users';
+  import { getCurrentUser, searchUsers, updateAvatar, uploadAvatar } from '../api/users';
+  import { API_BASE_URL } from '../config';
   import { clearAuth, getAvatarUrl, getToken, getUsername, setAvatarUrl } from '../utils/auth';
   
   const createSocket = inject('socket');
@@ -317,7 +322,7 @@
 
   const avatarStyle = (avatarUrl, name = '') => {
     if (avatarUrl) {
-      return { backgroundImage: `url("${avatarUrl}")` };
+      return { backgroundImage: `url("${resolveAvatarUrl(avatarUrl)}")` };
     }
 
     const seed = [...String(name || 'vesc')].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -325,6 +330,13 @@
     return {
       backgroundImage: `linear-gradient(135deg, hsl(${hue}, 52%, 84%), hsl(${(hue + 38) % 360}, 56%, 72%))`
     };
+  };
+
+  const resolveAvatarUrl = (avatarUrl = '') => {
+    if (!avatarUrl) return '';
+    if (/^https?:\/\//i.test(avatarUrl)) return avatarUrl;
+    if (avatarUrl.startsWith('/')) return `${API_BASE_URL}${avatarUrl}`;
+    return avatarUrl;
   };
 
   const loadCurrentUser = async () => {
@@ -527,6 +539,29 @@
       ElMessage.success('头像已更新');
     } catch (error) {
       ElMessage.error(error.message || '头像更新失败');
+    }
+  };
+
+  const handleAvatarFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const response = await uploadAvatar(file);
+      currentAvatarUrl.value = response.data.user.avatar_url || '';
+      avatarDraftUrl.value = currentAvatarUrl.value;
+      setAvatarUrl(currentAvatarUrl.value);
+
+      messages.value = messages.value.map((message) => {
+        if (message.sender_id !== currentUserId.value) return message;
+        return { ...message, avatar_url: currentAvatarUrl.value };
+      });
+
+      avatarDialogVisible.value = false;
+      ElMessage.success('头像已上传');
+    } catch (error) {
+      ElMessage.error(error.message || '头像上传失败');
     }
   };
 
@@ -1096,7 +1131,8 @@
       border: 1px solid #edf1f7;
       border-radius: 18px 18px 18px 6px;
       background: #ffffff;
-      max-width: min(680px, 72%);
+      max-width: min(680px, 100%);
+      min-width: 0;
       box-shadow: 0 12px 30px rgba(50, 64, 92, 0.06);
       word-break: break-word;
     }
@@ -1133,14 +1169,22 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
+      min-width: 0;
+      white-space: nowrap;
     }
     
     .username {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-weight: bold;
       color: #587092;
     }
     
     .time {
+      flex-shrink: 0;
       color: #9aa5b6;
     }
     
@@ -1159,6 +1203,24 @@
       margin: 0;
       color: #8b96a8;
       font-size: 12px;
+    }
+
+    .upload-avatar-btn {
+      position: relative;
+      overflow: hidden;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: #edf3f8;
+      color: #60708a;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .upload-avatar-btn input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
     }
     
     input {

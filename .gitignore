@@ -25,6 +25,13 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# Uploaded files
+server/uploads/*
+!server/uploads/.gitkeep
+!server/uploads/avatars/
+server/uploads/avatars/*
+!server/uploads/avatars/.gitkeep
+
 # Local learning notes
 PROJECT_NOTES.md
 
