@@ -204,6 +204,7 @@ class Conversation {
          c.created_at,
          c.updated_at,
          CASE
+           WHEN last_message.status = 'revoked' THEN '[已撤回]'
            WHEN last_message.message_type = 'image' THEN '[图片]'
            ELSE last_message.content
          END AS last_message,
@@ -220,6 +221,7 @@ class Conversation {
          SELECT m.id
          FROM messages m
          WHERE m.conversation_id = c.id
+           AND m.status <> 'deleted'
          ORDER BY m.created_at DESC, m.id DESC
          LIMIT 1
        )

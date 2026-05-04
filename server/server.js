@@ -135,6 +135,64 @@ io.on('connection', async (socket) => {
     }
   });
 
+  socket.on('delete message', async (payload) => {
+    try {
+      const conversationId = Number(payload?.conversationId);
+      const messageId = Number(payload?.messageId);
+      if (!Number.isInteger(conversationId) || conversationId <= 0 || !Number.isInteger(messageId) || messageId <= 0) {
+        socket.emit('error', '消息不存在');
+        return;
+      }
+      if (!(await Conversation.isMember(conversationId, socket.user.userId))) {
+        socket.emit('error', '无权访问该会话');
+        return;
+      }
+
+      const deletedMessage = await Message.deleteForSender(messageId, socket.user.userId);
+      if (deletedMessage.conversation_id !== conversationId) {
+        socket.emit('error', '消息不存在');
+        return;
+      }
+
+      io.to(`conversation:${conversationId}`).emit('message deleted', {
+        conversationId,
+        messageId
+      });
+    } catch (error) {
+      console.error('删除消息失败:', error);
+      socket.emit('error', error.message || '删除消息失败');
+    }
+  });
+
+  socket.on('revoke message', async (payload) => {
+    try {
+      const conversationId = Number(payload?.conversationId);
+      const messageId = Number(payload?.messageId);
+      if (!Number.isInteger(conversationId) || conversationId <= 0 || !Number.isInteger(messageId) || messageId <= 0) {
+        socket.emit('error', '消息不存在');
+        return;
+      }
+      if (!(await Conversation.isMember(conversationId, socket.user.userId))) {
+        socket.emit('error', '无权访问该会话');
+        return;
+      }
+
+      const revokedMessage = await Message.revokeForSender(messageId, socket.user.userId);
+      if (revokedMessage.conversation_id !== conversationId) {
+        socket.emit('error', '消息不存在');
+        return;
+      }
+
+      io.to(`conversation:${conversationId}`).emit('message revoked', {
+        ...revokedMessage,
+        conversation_id: conversationId
+      });
+    } catch (error) {
+      console.error('撤回消息失败:', error);
+      socket.emit('error', error.message || '撤回消息失败');
+    }
+  });
+
   // 处理断开连接
   socket.on('disconnect', () => {
     console.log(`用户 ${socket.user.username} 已断开连接`);

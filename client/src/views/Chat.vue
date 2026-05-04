@@ -96,8 +96,9 @@
                 <span class="username">{{ msg.username }}</span>
                 <span class="time">{{ formatTime(msg.created_at) }}</span>
               </div>
+              <div v-if="msg.status === 'revoked'" class="revoked-message">消息已撤回</div>
               <button
-                v-if="msg.message_type === 'image'"
+                v-else-if="msg.message_type === 'image'"
                 class="message-image-btn"
                 type="button"
                 @click="previewImage(msg.media_url)"
@@ -105,6 +106,17 @@
                 <img :src="resolveMediaUrl(msg.media_url)" alt="聊天图片" />
               </button>
               <div v-else class="message-content">{{ msg.content }}</div>
+              <div class="message-actions">
+                <button
+                  v-if="msg.message_type === 'text' && msg.status !== 'revoked'"
+                  type="button"
+                  @click="copyMessage(msg)"
+                >
+                  复制
+                </button>
+                <button v-if="canManageMessage(msg)" type="button" @click="deleteMessage(msg)">删除</button>
+                <button v-if="canManageMessage(msg)" type="button" @click="revokeMessage(msg)">撤回</button>
+              </div>
             </div>
           </div>
         </div>
@@ -314,7 +326,7 @@
 
     const updatedConversation = {
       ...conversations.value[index],
-      last_message: msg.message_type === 'image' ? '[图片]' : msg.content,
+      last_message: getConversationPreviewText(msg),
       last_message_at: msg.created_at,
       updated_at: msg.created_at
     };
@@ -355,6 +367,12 @@
     return mediaUrl;
   };
 
+  const getConversationPreviewText = (message) => {
+    if (message.status === 'revoked') return '[已撤回]';
+    if (message.message_type === 'image') return '[图片]';
+    return message.content;
+  };
+
   const loadCurrentUser = async () => {
     const response = await getCurrentUser();
     currentUsername.value = response.data.user.username;
@@ -382,6 +400,19 @@
       messages.value.push(msg);
       resetUnreadCount(msg.conversation_id);
       scrollToBottom();
+    });
+
+    socket.value.on('message deleted', ({ conversationId, messageId }) => {
+      if (conversationId !== activeConversationId.value) return;
+      messages.value = messages.value.filter((message) => message.id !== messageId);
+    });
+
+    socket.value.on('message revoked', (msg) => {
+      updateConversationPreview(msg);
+      messages.value = messages.value.map((message) => {
+        if (message.id !== msg.id) return message;
+        return { ...message, ...msg };
+      });
     });
   
     socket.value.on('history messages', ({ conversationId, messages: msgs }) => {
@@ -690,6 +721,33 @@
     const url = resolveMediaUrl(mediaUrl);
     if (!url) return;
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const canManageMessage = (message) => {
+    return message.sender_id === currentUserId.value && message.status === 'normal';
+  };
+
+  const copyMessage = async (message) => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      ElMessage.success('已复制');
+    } catch (error) {
+      ElMessage.error('复制失败');
+    }
+  };
+
+  const deleteMessage = (message) => {
+    socket.value.emit('delete message', {
+      conversationId: activeConversationId.value,
+      messageId: message.id
+    });
+  };
+
+  const revokeMessage = (message) => {
+    socket.value.emit('revoke message', {
+      conversationId: activeConversationId.value,
+      messageId: message.id
+    });
   };
   
   const formatTime = (time) => {
@@ -1251,6 +1309,34 @@
       max-width: 100%;
       max-height: 260px;
       object-fit: cover;
+    }
+
+    .revoked-message {
+      color: #9aa5b6;
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .message-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      opacity: 0;
+      transition: opacity 0.18s;
+    }
+
+    .message:hover .message-actions {
+      opacity: 1;
+    }
+
+    .message-actions button {
+      padding: 3px 6px;
+      border: none;
+      border-radius: 8px;
+      background: #edf3f8;
+      color: #60708a;
+      font-size: 12px;
+      box-shadow: none;
     }
 
     .avatar-form {
