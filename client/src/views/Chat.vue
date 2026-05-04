@@ -1,7 +1,15 @@
 <template>
     <div class="chat-container">
       <aside class="conversation-list">
-        <button class="new-chat-btn" type="button" @click="openGroupDialog">新建聊天</button>
+        <div class="sidebar-primary-actions">
+          <button class="new-chat-btn" type="button" @click="openGroupDialog">新建聊天</button>
+          <button class="friends-btn" type="button" @click="openFriendsDialog">
+            好友
+            <span v-if="incomingFriendRequests.length" class="unread-badge">
+              {{ formatUnreadCount(incomingFriendRequests.length) }}
+            </span>
+          </button>
+        </div>
         <div class="conversation-actions">
           <input
             v-model="userSearchKeyword"
@@ -17,7 +25,7 @@
             :key="user.id"
             class="search-result"
             type="button"
-            @click="startDirectConversation(user.id)"
+            @click="handleSearchUserClick(user)"
           >
             <span class="search-user-main">
               <span class="avatar small" :style="avatarStyle(user.avatar_url, user.username)">
@@ -25,7 +33,7 @@
               </span>
               <span>{{ user.username }}</span>
             </span>
-            <span>私信</span>
+            <span class="search-action-text">{{ formatFriendAction(user) }}</span>
           </button>
         </div>
         <button
@@ -154,6 +162,76 @@
           <button class="compact-btn ghost" type="button" @click="groupDialogVisible = false">取消</button>
           <button class="compact-btn" type="button" @click="submitGroupConversation">创建</button>
         </template>
+      </el-dialog>
+
+      <el-dialog v-model="friendsDialogVisible" title="好友" width="520px">
+        <div class="friends-panel">
+          <section class="friend-section">
+            <div class="friend-section-header">
+              <span>好友列表</span>
+              <span>{{ friends.length }} 位好友</span>
+            </div>
+            <div v-if="friends.length" class="friend-list">
+              <button
+                v-for="friend in friends"
+                :key="friend.id"
+                class="friend-item"
+                type="button"
+                @click="startDirectConversation(friend.id)"
+              >
+                <span class="search-user-main">
+                  <span class="avatar small" :style="avatarStyle(friend.avatar_url, friend.username)">
+                    <span v-if="!friend.avatar_url">{{ avatarText(friend.username) }}</span>
+                  </span>
+                  <span class="friend-name">{{ friend.username }}</span>
+                </span>
+                <span>私信</span>
+              </button>
+            </div>
+            <p v-else class="empty-hint">还没有好友，可以先搜索用户发送好友申请。</p>
+          </section>
+
+          <section class="friend-section">
+            <div class="friend-section-header">
+              <span>收到的申请</span>
+              <span>{{ incomingFriendRequests.length }} 条</span>
+            </div>
+            <div v-if="incomingFriendRequests.length" class="friend-list">
+              <div v-for="request in incomingFriendRequests" :key="request.id" class="friend-request-item">
+                <span class="search-user-main">
+                  <span class="avatar small" :style="avatarStyle(request.avatar_url, request.username)">
+                    <span v-if="!request.avatar_url">{{ avatarText(request.username) }}</span>
+                  </span>
+                  <span class="friend-name">{{ request.username }}</span>
+                </span>
+                <span class="friend-request-actions">
+                  <button class="compact-btn" type="button" @click="handleFriendRequest(request.id, 'accept')">同意</button>
+                  <button class="compact-btn ghost" type="button" @click="handleFriendRequest(request.id, 'reject')">拒绝</button>
+                </span>
+              </div>
+            </div>
+            <p v-else class="empty-hint">暂无新的好友申请。</p>
+          </section>
+
+          <section class="friend-section">
+            <div class="friend-section-header">
+              <span>已发送申请</span>
+              <span>{{ outgoingFriendRequests.length }} 条</span>
+            </div>
+            <div v-if="outgoingFriendRequests.length" class="friend-list">
+              <div v-for="request in outgoingFriendRequests" :key="request.id" class="friend-request-item">
+                <span class="search-user-main">
+                  <span class="avatar small" :style="avatarStyle(request.avatar_url, request.username)">
+                    <span v-if="!request.avatar_url">{{ avatarText(request.username) }}</span>
+                  </span>
+                  <span class="friend-name">{{ request.username }}</span>
+                </span>
+                <span class="pending-label">等待对方通过</span>
+              </div>
+            </div>
+            <p v-else class="empty-hint">没有待通过的申请。</p>
+          </section>
+        </div>
       </el-dialog>
 
       <el-dialog v-model="groupDetailVisible" title="群详情" width="480px">
@@ -295,7 +373,16 @@
     updateGroupProfile,
     uploadConversationImage
   } from '../api/conversations';
-  import { getCurrentUser, searchUsers, updateAvatar, uploadAvatar } from '../api/users';
+  import {
+    getCurrentUser,
+    getFriendRequests,
+    getFriends,
+    respondFriendRequest,
+    searchUsers,
+    sendFriendRequest,
+    updateAvatar,
+    uploadAvatar
+  } from '../api/users';
   import { API_BASE_URL } from '../config';
   import { clearAuth, getAvatarUrl, getToken, getUsername, setAvatarUrl } from '../utils/auth';
   
@@ -306,6 +393,10 @@
   const activeConversationId = ref(null);
   const userSearchKeyword = ref('');
   const searchedUsers = ref([]);
+  const friendsDialogVisible = ref(false);
+  const friends = ref([]);
+  const incomingFriendRequests = ref([]);
+  const outgoingFriendRequests = ref([]);
   const groupDialogVisible = ref(false);
   const groupName = ref('');
   const groupSearchKeyword = ref('');
@@ -486,6 +577,16 @@
     }
   };
 
+  const loadFriendData = async () => {
+    const [friendsResponse, requestsResponse] = await Promise.all([
+      getFriends(),
+      getFriendRequests()
+    ]);
+    friends.value = friendsResponse.data.friends;
+    incomingFriendRequests.value = requestsResponse.data.incoming;
+    outgoingFriendRequests.value = requestsResponse.data.outgoing;
+  };
+
   const refreshAndSelectConversation = async (conversationId) => {
     await loadConversations();
     selectConversation(conversationId);
@@ -511,15 +612,81 @@
     searchedUsers.value = response.data.users;
   };
 
+  const refreshSearchResults = async () => {
+    if (!userSearchKeyword.value.trim()) return;
+    await searchUserList();
+  };
+
   const startDirectConversation = async (userId) => {
     try {
       const response = await createDirectConversation(userId);
       searchedUsers.value = [];
       userSearchKeyword.value = '';
+      friendsDialogVisible.value = false;
       await refreshAndSelectConversation(response.data.conversationId);
     } catch (error) {
       ElMessage.error(error.message || '创建私聊失败');
     }
+  };
+
+  const sendRequestToUser = async (userId) => {
+    try {
+      const response = await sendFriendRequest(userId);
+      incomingFriendRequests.value = response.data.incoming;
+      outgoingFriendRequests.value = response.data.outgoing;
+      await refreshSearchResults();
+      ElMessage.success('好友申请已发送');
+    } catch (error) {
+      ElMessage.error(error.message || '发送好友申请失败');
+    }
+  };
+
+  const handleFriendRequest = async (requestId, action) => {
+    try {
+      const response = await respondFriendRequest(requestId, action);
+      incomingFriendRequests.value = response.data.incoming;
+      outgoingFriendRequests.value = response.data.outgoing;
+      await loadFriendData();
+      await refreshSearchResults();
+      ElMessage.success(action === 'accept' ? '已添加好友' : '已拒绝申请');
+    } catch (error) {
+      ElMessage.error(error.message || '处理好友申请失败');
+    }
+  };
+
+  const openFriendsDialog = async () => {
+    try {
+      friendsDialogVisible.value = true;
+      await loadFriendData();
+    } catch (error) {
+      ElMessage.error(error.message || '获取好友信息失败');
+    }
+  };
+
+  const formatFriendAction = (user) => {
+    const statusMap = {
+      friend: '私信',
+      pending_outgoing: '已申请',
+      pending_incoming: '待处理',
+      none: '加好友'
+    };
+    return statusMap[user.friendship_status] || '加好友';
+  };
+
+  const handleSearchUserClick = (user) => {
+    if (user.friendship_status === 'friend') {
+      startDirectConversation(user.id);
+      return;
+    }
+    if (user.friendship_status === 'pending_incoming') {
+      openFriendsDialog();
+      return;
+    }
+    if (user.friendship_status === 'pending_outgoing') {
+      ElMessage.info('好友申请等待对方通过');
+      return;
+    }
+    sendRequestToUser(user.id);
   };
 
   const openGroupDialog = () => {
@@ -744,6 +911,7 @@
       }
 
       loadCurrentUser().catch(() => {});
+      loadFriendData().catch(() => {});
       loadConversations().catch((error) => {
         ElMessage.error(error.message || '获取会话失败');
       });
@@ -918,6 +1086,28 @@
       box-shadow: none;
     }
 
+    .sidebar-primary-actions {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .friends-btn {
+      min-width: 64px;
+      margin-bottom: 6px;
+      padding: 0 12px;
+      border: none;
+      border-radius: 16px;
+      background: #f4f7fb;
+      color: #60708a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: none;
+    }
+
     .conversation-actions {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -975,6 +1165,13 @@
       justify-content: space-between;
       gap: 10px;
       cursor: pointer;
+    }
+
+    .search-action-text,
+    .pending-label {
+      flex-shrink: 0;
+      color: #8b96a8;
+      font-size: 12px;
     }
 
     .search-user-main {
@@ -1112,6 +1309,73 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+    }
+
+    .friends-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      color: #34435a;
+    }
+
+    .friend-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .friend-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #65738a;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .friend-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .friend-item,
+    .friend-request-item {
+      width: 100%;
+      border: 1px solid #edf1f7;
+      border-radius: 14px;
+      background: #fbfcfe;
+      color: #415066;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: none;
+    }
+
+    .friend-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .friend-request-actions {
+      flex-shrink: 0;
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .empty-hint {
+      margin: 0;
+      padding: 12px;
+      border-radius: 14px;
+      background: #fbfcfe;
+      color: #9aa5b6;
+      font-size: 13px;
     }
 
     .group-user-list {

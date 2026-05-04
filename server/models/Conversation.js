@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const Friendship = require('./Friendship');
 
 const DEFAULT_GROUP_NAME = 'Vesc Lobby';
 
@@ -237,6 +238,10 @@ class Conversation {
   static async createDirectConversation(currentUserId, targetUserId) {
     if (currentUserId === targetUserId) {
       throw new Error('不能和自己创建私聊');
+    }
+
+    if (!(await Friendship.areFriends(currentUserId, targetUserId))) {
+      throw new Error('添加为好友后才能发起私聊');
     }
 
     const [users] = await pool.execute(

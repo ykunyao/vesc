@@ -22,3 +22,19 @@ export const searchUsers = (keyword) => {
     params: { q: keyword }
   })
 }
+
+export const getFriends = () => {
+  return http.get('/api/users/friends')
+}
+
+export const getFriendRequests = () => {
+  return http.get('/api/users/friend-requests')
+}
+
+export const sendFriendRequest = (userId) => {
+  return http.post('/api/users/friend-requests', { userId })
+}
+
+export const respondFriendRequest = (requestId, action) => {
+  return http.patch(`/api/users/friend-requests/${requestId}`, { action })
+}
