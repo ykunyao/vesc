@@ -46,6 +46,12 @@ io.on('connection', async (socket) => {
   console.log(`用户 ${socket.user.username} 已连接`);
   await Conversation.ensureDefaultConversation(socket.user.userId);
 
+  const userConversations = await Conversation.listForUser(socket.user.userId);
+  userConversations.forEach((conversation) => {
+    socket.join(`conversation:${conversation.id}`);
+  });
+  socket.emit('socket ready');
+
   const joinConversation = async (conversationId) => {
     const isMember = await Conversation.isMember(conversationId, socket.user.userId);
     if (!isMember) {

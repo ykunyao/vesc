@@ -30,8 +30,21 @@
           :class="['conversation-item', { active: conversation.id === activeConversationId }]"
           @click="selectConversation(conversation.id)"
         >
-          <span class="conversation-name">{{ conversation.name || '未命名会话' }}</span>
-          <span class="conversation-type">{{ conversation.type === 'direct' ? '私信' : '群聊' }}</span>
+          <span class="conversation-main-row">
+            <span class="conversation-name">{{ conversation.name || '未命名会话' }}</span>
+            <span v-if="unreadCounts[conversation.id]" class="unread-badge">
+              {{ formatUnreadCount(unreadCounts[conversation.id]) }}
+            </span>
+          </span>
+          <span class="conversation-meta-row">
+            <span class="conversation-type">{{ conversation.type === 'direct' ? '私信' : '群聊' }}</span>
+            <span v-if="conversation.last_message_at" class="conversation-time">
+              {{ formatConversationTime(conversation.last_message_at) }}
+            </span>
+          </span>
+          <span class="conversation-preview">
+            {{ conversation.last_message || '还没有消息，打个招呼吧' }}
+          </span>
         </button>
       </aside>
 
@@ -109,6 +122,7 @@
   const groupSearchKeyword = ref('');
   const groupSearchResults = ref([]);
   const selectedGroupMemberIds = ref([]);
+  const unreadCounts = ref({});
   const messages = ref([]);
   const currentUserId = ref(null);
   const currentUsername = ref('');
@@ -125,6 +139,37 @@
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
     }
   };
+
+  const resetUnreadCount = (conversationId) => {
+    const nextCounts = { ...unreadCounts.value };
+    delete nextCounts[conversationId];
+    unreadCounts.value = nextCounts;
+  };
+
+  const incrementUnreadCount = (conversationId) => {
+    unreadCounts.value = {
+      ...unreadCounts.value,
+      [conversationId]: (unreadCounts.value[conversationId] || 0) + 1
+    };
+  };
+
+  const updateConversationPreview = (msg) => {
+    const conversationId = msg.conversation_id;
+    const index = conversations.value.findIndex((item) => item.id === conversationId);
+    if (index === -1) return;
+
+    const updatedConversation = {
+      ...conversations.value[index],
+      last_message: msg.content,
+      last_message_at: msg.created_at,
+      updated_at: msg.created_at
+    };
+
+    conversations.value = [
+      updatedConversation,
+      ...conversations.value.filter((item) => item.id !== conversationId)
+    ];
+  };
   
   const initializeSocket = () => {
     socket.value = createSocket();
@@ -136,14 +181,22 @@
     }
   
     socket.value.on('chat message', (msg) => {
-      if (msg.conversation_id !== activeConversationId.value) return;
+      updateConversationPreview(msg);
+
+      if (msg.conversation_id !== activeConversationId.value) {
+        incrementUnreadCount(msg.conversation_id);
+        return;
+      }
+
       messages.value.push(msg);
+      resetUnreadCount(msg.conversation_id);
       scrollToBottom();
     });
   
     socket.value.on('history messages', ({ conversationId, messages: msgs }) => {
       if (conversationId !== activeConversationId.value) return;
       messages.value = msgs;
+      resetUnreadCount(conversationId);
       scrollToBottom();
     });
   
@@ -172,6 +225,7 @@
   const selectConversation = (conversationId) => {
     activeConversationId.value = conversationId;
     messages.value = [];
+    resetUnreadCount(conversationId);
 
     if (socket.value) {
       socket.value.emit('join conversation', conversationId);
@@ -279,6 +333,8 @@
   };
   
   const formatTime = (time) => {
+    if (!time) return '';
+
     return new Date(time).toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -287,6 +343,38 @@
       minute: '2-digit',
       hour12: false // 24小时制
     });
+  };
+
+  const formatConversationTime = (time) => {
+    if (!time) return '';
+
+    const date = new Date(time);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    if (isToday) {
+      return date.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    }
+
+    if (isYesterday) {
+      return '昨天';
+    }
+
+    return date.toLocaleDateString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
+
+  const formatUnreadCount = (count) => {
+    return count > 99 ? '99+' : count;
   };
   
   const handleLogout = () => {
@@ -379,7 +467,7 @@
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 2px;
+      gap: 4px;
       cursor: pointer;
       transition: background-color 0.2s;
     }
@@ -392,11 +480,51 @@
     .conversation-name {
       font-size: 14px;
       font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .conversation-type {
       font-size: 12px;
       color: #999;
+    }
+
+    .conversation-main-row,
+    .conversation-meta-row {
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .conversation-time,
+    .conversation-preview {
+      color: #999;
+      font-size: 12px;
+    }
+
+    .conversation-preview {
+      width: 100%;
+      overflow: hidden;
+      text-align: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .unread-badge {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: #f56c6c;
+      color: white;
+      font-size: 11px;
+      line-height: 18px;
+      text-align: center;
+      flex-shrink: 0;
     }
 
     .chat-main {
