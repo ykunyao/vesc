@@ -58,7 +58,7 @@ class Conversation {
 
   static async getMember(conversationId, userId) {
     const [rows] = await pool.execute(
-      `SELECT cm.id, cm.conversation_id, cm.user_id, cm.role, cm.joined_at, u.username, u.email
+      `SELECT cm.id, cm.conversation_id, cm.user_id, cm.role, cm.joined_at, u.username, u.email, u.avatar_url
        FROM conversation_members cm
        JOIN users u ON u.id = cm.user_id
        WHERE cm.conversation_id = ? AND cm.user_id = ?
@@ -71,7 +71,7 @@ class Conversation {
 
   static async listMembers(conversationId) {
     const [rows] = await pool.execute(
-      `SELECT cm.user_id AS id, u.username, u.email, cm.role, cm.joined_at
+      `SELECT cm.user_id AS id, u.username, u.email, u.avatar_url, cm.role, cm.joined_at
        FROM conversation_members cm
        JOIN users u ON u.id = cm.user_id
        WHERE cm.conversation_id = ?
@@ -197,6 +197,10 @@ class Conversation {
            ELSE c.name
          END AS name,
          c.owner_id,
+         CASE
+           WHEN c.type = 'direct' THEN other_user.avatar_url
+           ELSE NULL
+         END AS avatar_url,
          c.created_at,
          c.updated_at,
          last_message.content AS last_message,

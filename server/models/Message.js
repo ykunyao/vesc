@@ -16,7 +16,8 @@ class Message {
           m.content,
           m.created_at,
           m.sender_id,
-          u.username
+          u.username,
+          u.avatar_url
         FROM messages m 
         JOIN users u ON m.sender_id = u.id 
         WHERE m.id = ?
@@ -48,7 +49,8 @@ class Message {
           m.content,
           m.created_at,
           m.sender_id,
-          u.username
+          u.username,
+          u.avatar_url
         FROM messages m 
         JOIN users u ON m.sender_id = u.id 
         WHERE m.conversation_id = ?

@@ -19,7 +19,12 @@
             type="button"
             @click="startDirectConversation(user.id)"
           >
-            <span>{{ user.username }}</span>
+            <span class="search-user-main">
+              <span class="avatar small" :style="avatarStyle(user.avatar_url, user.username)">
+                <span v-if="!user.avatar_url">{{ avatarText(user.username) }}</span>
+              </span>
+              <span>{{ user.username }}</span>
+            </span>
             <span>私信</span>
           </button>
         </div>
@@ -29,20 +34,25 @@
           :class="['conversation-item', { active: conversation.id === activeConversationId }]"
           @click="selectConversation(conversation.id)"
         >
-          <span class="conversation-main-row">
-            <span class="conversation-name">{{ conversation.name || '未命名会话' }}</span>
-            <span v-if="unreadCounts[conversation.id]" class="unread-badge">
-              {{ formatUnreadCount(unreadCounts[conversation.id]) }}
-            </span>
+          <span class="conversation-avatar avatar" :style="avatarStyle(conversation.avatar_url, conversation.name)">
+            <span v-if="!conversation.avatar_url">{{ conversation.type === 'direct' ? avatarText(conversation.name) : '群' }}</span>
           </span>
-          <span class="conversation-meta-row">
-            <span class="conversation-type">{{ conversation.type === 'direct' ? '私信' : '群聊' }}</span>
-            <span v-if="conversation.last_message_at" class="conversation-time">
-              {{ formatConversationTime(conversation.last_message_at) }}
+          <span class="conversation-body">
+            <span class="conversation-main-row">
+              <span class="conversation-name">{{ conversation.name || '未命名会话' }}</span>
+              <span v-if="unreadCounts[conversation.id]" class="unread-badge">
+                {{ formatUnreadCount(unreadCounts[conversation.id]) }}
+              </span>
             </span>
-          </span>
-          <span class="conversation-preview">
-            {{ conversation.last_message || '还没有消息，打个招呼吧' }}
+            <span class="conversation-meta-row">
+              <span class="conversation-type">{{ conversation.type === 'direct' ? '私信' : '群聊' }}</span>
+              <span v-if="conversation.last_message_at" class="conversation-time">
+                {{ formatConversationTime(conversation.last_message_at) }}
+              </span>
+            </span>
+            <span class="conversation-preview">
+              {{ conversation.last_message || '还没有消息，打个招呼吧' }}
+            </span>
           </span>
         </button>
       </aside>
@@ -62,20 +72,32 @@
             </button>
           </div>
           <div class="user-info">
-            <span>{{ currentUsername }}</span>
+            <button class="profile-btn" type="button" @click="openAvatarDialog">
+              <span class="avatar header-avatar" :style="avatarStyle(currentAvatarUrl, currentUsername)">
+                <span v-if="!currentAvatarUrl">{{ avatarText(currentUsername) }}</span>
+              </span>
+              <span>{{ currentUsername }}</span>
+            </button>
             <button @click="handleLogout" class="logout-btn">退出登录</button>
           </div>
         </div>
   
         <div class="messages" ref="messagesContainer">
-          <div v-for="msg in messages" 
-               :key="msg.id" 
-               :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
-            <div class="message-header">
-              <span class="username">{{ msg.username }}</span>
-              <span class="time">{{ formatTime(msg.created_at) }}</span>
+          <div
+            v-for="msg in messages"
+            :key="msg.id"
+            :class="['message-row', { 'my-message-row': msg.sender_id === currentUserId }]"
+          >
+            <span class="avatar message-avatar" :style="avatarStyle(msg.avatar_url, msg.username)">
+              <span v-if="!msg.avatar_url">{{ avatarText(msg.username) }}</span>
+            </span>
+            <div :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
+              <div class="message-header">
+                <span class="username">{{ msg.username }}</span>
+                <span class="time">{{ formatTime(msg.created_at) }}</span>
+              </div>
+              <div class="message-content">{{ msg.content }}</div>
             </div>
-            <div class="message-content">{{ msg.content }}</div>
           </div>
         </div>
   
@@ -98,7 +120,12 @@
                 :value="user.id"
                 v-model="selectedGroupMemberIds"
               />
-              <span>{{ user.username }}</span>
+              <span class="search-user-main">
+                <span class="avatar small" :style="avatarStyle(user.avatar_url, user.username)">
+                  <span v-if="!user.avatar_url">{{ avatarText(user.username) }}</span>
+                </span>
+                <span>{{ user.username }}</span>
+              </span>
               <span class="group-user-email">{{ user.email }}</span>
             </label>
           </div>
@@ -135,7 +162,12 @@
                 v-model="selectedInviteMemberIds"
                 :disabled="isGroupMember(user.id)"
               />
-              <span>{{ user.username }}</span>
+              <span class="search-user-main">
+                <span class="avatar small" :style="avatarStyle(user.avatar_url, user.username)">
+                  <span v-if="!user.avatar_url">{{ avatarText(user.username) }}</span>
+                </span>
+                <span>{{ user.username }}</span>
+              </span>
               <span class="group-user-email">{{ isGroupMember(user.id) ? '已在群内' : user.email }}</span>
             </label>
             <button class="compact-btn" type="button" @click="submitInviteMembers">邀请选中成员</button>
@@ -143,9 +175,14 @@
 
           <div class="member-list">
             <div v-for="member in groupMembers" :key="member.id" class="member-item">
-              <div>
-                <span class="member-name">{{ member.username }}</span>
-                <span class="member-role">{{ formatMemberRole(member.role) }}</span>
+              <div class="member-profile">
+                <span class="avatar small" :style="avatarStyle(member.avatar_url, member.username)">
+                  <span v-if="!member.avatar_url">{{ avatarText(member.username) }}</span>
+                </span>
+                <div>
+                  <span class="member-name">{{ member.username }}</span>
+                  <span class="member-role">{{ formatMemberRole(member.role) }}</span>
+                </div>
               </div>
               <button
                 v-if="canRemoveMember(member)"
@@ -158,6 +195,20 @@
             </div>
           </div>
         </div>
+      </el-dialog>
+
+      <el-dialog v-model="avatarDialogVisible" title="设置头像" width="420px">
+        <div class="avatar-form">
+          <div class="avatar-preview avatar large" :style="avatarStyle(avatarDraftUrl, currentUsername)">
+            <span v-if="!avatarDraftUrl">{{ avatarText(currentUsername) }}</span>
+          </div>
+          <el-input v-model="avatarDraftUrl" placeholder="输入 http/https 头像图片地址" clearable />
+          <p class="avatar-help">先支持图片 URL。留空保存可以恢复默认头像。</p>
+        </div>
+        <template #footer>
+          <button class="compact-btn ghost" type="button" @click="avatarDialogVisible = false">取消</button>
+          <button class="compact-btn" type="button" @click="saveAvatar">保存</button>
+        </template>
       </el-dialog>
     </div>
   </template>
@@ -175,8 +226,8 @@
     getConversations,
     removeConversationMember
   } from '../api/conversations';
-  import { searchUsers } from '../api/users';
-  import { clearAuth, getToken, getUsername } from '../utils/auth';
+  import { getCurrentUser, searchUsers, updateAvatar } from '../api/users';
+  import { clearAuth, getAvatarUrl, getToken, getUsername, setAvatarUrl } from '../utils/auth';
   
   const createSocket = inject('socket');
   const router = useRouter();
@@ -201,6 +252,9 @@
   const messages = ref([]);
   const currentUserId = ref(null);
   const currentUsername = ref('');
+  const currentAvatarUrl = ref('');
+  const avatarDialogVisible = ref(false);
+  const avatarDraftUrl = ref('');
   const messagesContainer = ref(null);
 
   const activeConversationName = computed(() => {
@@ -255,6 +309,29 @@
       updatedConversation,
       ...conversations.value.filter((item) => item.id !== conversationId)
     ];
+  };
+
+  const avatarText = (name = '') => {
+    return String(name || '?').trim().slice(0, 1).toUpperCase() || '?';
+  };
+
+  const avatarStyle = (avatarUrl, name = '') => {
+    if (avatarUrl) {
+      return { backgroundImage: `url("${avatarUrl}")` };
+    }
+
+    const seed = [...String(name || 'vesc')].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const hue = seed % 360;
+    return {
+      backgroundImage: `linear-gradient(135deg, hsl(${hue}, 52%, 84%), hsl(${(hue + 38) % 360}, 56%, 72%))`
+    };
+  };
+
+  const loadCurrentUser = async () => {
+    const response = await getCurrentUser();
+    currentUsername.value = response.data.user.username;
+    currentAvatarUrl.value = response.data.user.avatar_url || '';
+    setAvatarUrl(currentAvatarUrl.value);
   };
   
   const initializeSocket = () => {
@@ -425,6 +502,34 @@
     }
   };
 
+  const openAvatarDialog = () => {
+    avatarDraftUrl.value = currentAvatarUrl.value;
+    avatarDialogVisible.value = true;
+  };
+
+  const saveAvatar = async () => {
+    try {
+      const response = await updateAvatar(avatarDraftUrl.value.trim());
+      currentAvatarUrl.value = response.data.user.avatar_url || '';
+      setAvatarUrl(currentAvatarUrl.value);
+      avatarDialogVisible.value = false;
+
+      messages.value = messages.value.map((message) => {
+        if (message.sender_id !== currentUserId.value) return message;
+        return { ...message, avatar_url: currentAvatarUrl.value };
+      });
+
+      conversations.value = conversations.value.map((conversation) => {
+        if (conversation.type !== 'direct') return conversation;
+        return conversation;
+      });
+
+      ElMessage.success('头像已更新');
+    } catch (error) {
+      ElMessage.error(error.message || '头像更新失败');
+    }
+  };
+
   const removeGroupMember = async (userId) => {
     try {
       const response = await removeConversationMember(activeConversationId.value, userId);
@@ -471,6 +576,7 @@
     }
   
     currentUsername.value = username;
+    currentAvatarUrl.value = getAvatarUrl();
   
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
@@ -480,6 +586,7 @@
         return;
       }
 
+      loadCurrentUser().catch(() => {});
       loadConversations().catch((error) => {
         ElMessage.error(error.message || '获取会话失败');
       });
@@ -654,8 +761,17 @@
       padding: 8px 10px;
       border-radius: 12px;
       display: flex;
+      align-items: center;
       justify-content: space-between;
+      gap: 10px;
       cursor: pointer;
+    }
+
+    .search-user-main {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .conversation-item {
@@ -663,15 +779,22 @@
       border: none;
       background: transparent;
       color: #3d4a5f;
-      padding: 13px 20px;
+      padding: 11px 12px;
       border-radius: 15px;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 10px;
       cursor: pointer;
       box-shadow: none;
       transition: background-color 0.2s, color 0.2s;
+    }
+
+    .conversation-body {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
     }
 
     .conversation-item:hover,
@@ -728,6 +851,42 @@
       line-height: 18px;
       text-align: center;
       flex-shrink: 0;
+    }
+
+    .avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      overflow: hidden;
+      border-radius: 14px;
+      background-position: center;
+      background-size: cover;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+      flex-shrink: 0;
+    }
+
+    .avatar.small {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .avatar.large {
+      width: 86px;
+      height: 86px;
+      border-radius: 26px;
+      font-size: 28px;
+    }
+
+    .conversation-avatar {
+      width: 38px;
+      height: 38px;
     }
 
     .chat-main {
@@ -811,6 +970,13 @@
       background: #fafafa;
     }
 
+    .member-profile {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .member-name {
       font-weight: 600;
     }
@@ -882,6 +1048,25 @@
       color: #77849a;
       font-size: 14px;
     }
+
+    .profile-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid #e8eef6;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #5e6d85;
+      box-shadow: none;
+    }
+
+    .header-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
     
     .logout-btn {
       padding: 7px 12px;
@@ -900,10 +1085,10 @@
     .messages {
       flex: 1;
       overflow-y: auto;
-      padding: 36px 9vw 176px;
+      padding: 30px 28px 176px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
     }
     
     .message {
@@ -915,9 +1100,28 @@
       box-shadow: 0 12px 30px rgba(50, 64, 92, 0.06);
       word-break: break-word;
     }
+
+    .message-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      max-width: min(720px, 76%);
+    }
+
+    .my-message-row {
+      flex-direction: row-reverse;
+      align-self: flex-end;
+    }
+
+    .message-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      margin-top: 2px;
+      font-size: 12px;
+    }
     
     .my-message {
-      margin-left: auto;
       border-color: #dfe8f2;
       border-radius: 18px 18px 6px 18px;
       background: #eef4fb;
@@ -942,6 +1146,19 @@
     
     .message-content {
       line-height: 1.4;
+    }
+
+    .avatar-form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .avatar-help {
+      margin: 0;
+      color: #8b96a8;
+      font-size: 12px;
     }
     
     input {
