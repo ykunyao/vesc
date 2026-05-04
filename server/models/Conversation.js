@@ -46,7 +46,7 @@ class Conversation {
 
   static async getById(conversationId) {
     const [rows] = await pool.execute(
-      `SELECT id, type, name, owner_id, created_at, updated_at
+      `SELECT id, type, name, avatar_url, announcement, owner_id, created_at, updated_at
        FROM conversations
        WHERE id = ?
        LIMIT 1`,
@@ -199,8 +199,9 @@ class Conversation {
          c.owner_id,
          CASE
            WHEN c.type = 'direct' THEN other_user.avatar_url
-           ELSE NULL
+           ELSE c.avatar_url
          END AS avatar_url,
+         c.announcement,
          c.created_at,
          c.updated_at,
          CASE
@@ -292,6 +293,55 @@ class Conversation {
     }
 
     return conversationId;
+  }
+
+  static async updateGroupProfile(conversationId, actorUserId, { name, announcement, avatarUrl }) {
+    const conversation = await this.getById(conversationId);
+    if (!conversation || conversation.type !== 'group') {
+      throw new Error('群聊不存在');
+    }
+
+    const actor = await this.getMember(conversationId, actorUserId);
+    if (!actor || actor.role !== 'owner') {
+      throw new Error('只有群主可以修改群资料');
+    }
+
+    const groupName = String(name || '').trim();
+    if (groupName.length < 2 || groupName.length > 50) {
+      throw new Error('群聊名称需要在 2 到 50 个字符之间');
+    }
+
+    const normalizedAnnouncement = String(announcement || '').trim();
+    if (normalizedAnnouncement.length > 500) {
+      throw new Error('群公告不能超过 500 个字符');
+    }
+
+    const normalizedAvatarUrl = String(avatarUrl || '').trim();
+    if (normalizedAvatarUrl.length > 500) {
+      throw new Error('群头像地址不能超过 500 个字符');
+    }
+    if (normalizedAvatarUrl) {
+      if (!normalizedAvatarUrl.startsWith('/uploads/')) {
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(normalizedAvatarUrl);
+        } catch (error) {
+          throw new Error('请输入有效的群头像 URL');
+        }
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+          throw new Error('群头像仅支持 http、https 或上传路径');
+        }
+      }
+    }
+
+    await pool.execute(
+      `UPDATE conversations
+       SET name = ?, announcement = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [groupName, normalizedAnnouncement || null, normalizedAvatarUrl || null, conversationId]
+    );
+
+    return this.getById(conversationId);
   }
 }
 

@@ -91,6 +91,26 @@ router.post('/group', async (req, res) => {
   }
 });
 
+router.patch('/:id/group', async (req, res) => {
+  try {
+    const conversationId = Number(req.params.id);
+    if (!Number.isInteger(conversationId) || conversationId <= 0) {
+      return res.status(400).json({ message: '群聊不存在' });
+    }
+
+    const conversation = await Conversation.updateGroupProfile(conversationId, req.user.userId, {
+      name: req.body?.name,
+      announcement: req.body?.announcement,
+      avatarUrl: req.body?.avatarUrl
+    });
+
+    res.json({ conversation });
+  } catch (error) {
+    console.error('更新群资料失败:', error);
+    res.status(400).json({ message: error.message || '更新群资料失败' });
+  }
+});
+
 router.get('/:id/members', async (req, res) => {
   try {
     const conversationId = Number(req.params.id);

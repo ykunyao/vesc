@@ -20,6 +20,10 @@ export const getConversationMembers = (conversationId) => {
   return http.get(`/api/conversations/${conversationId}/members`)
 }
 
+export const updateGroupProfile = (conversationId, { name, announcement = '', avatarUrl = '' }) => {
+  return http.patch(`/api/conversations/${conversationId}/group`, { name, announcement, avatarUrl })
+}
+
 export const addConversationMembers = (conversationId, memberIds = []) => {
   return http.post(`/api/conversations/${conversationId}/members`, { memberIds })
 }

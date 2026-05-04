@@ -166,6 +166,49 @@
             <button class="compact-btn ghost" type="button" @click="leaveCurrentGroup">退出群聊</button>
           </div>
 
+          <div class="group-profile-form">
+            <div class="group-profile-heading">
+              <span class="avatar group-avatar-preview" :style="avatarStyle(groupProfileAvatarUrl, groupProfileName)">
+                <span v-if="!groupProfileAvatarUrl">{{ avatarText(groupProfileName) }}</span>
+              </span>
+              <div>
+                <div class="group-section-title">群资料</div>
+                <div class="group-section-note">
+                  {{ isCurrentUserGroupOwner ? '群主可以编辑群名、公告和头像' : '只有群主可以编辑群资料' }}
+                </div>
+              </div>
+            </div>
+            <el-input
+              v-model="groupProfileName"
+              placeholder="群聊名称"
+              maxlength="50"
+              :disabled="!isCurrentUserGroupOwner"
+            />
+            <el-input
+              v-model="groupProfileAvatarUrl"
+              placeholder="群头像 URL，可留空使用默认头像"
+              maxlength="500"
+              :disabled="!isCurrentUserGroupOwner"
+            />
+            <el-input
+              v-model="groupProfileAnnouncement"
+              type="textarea"
+              :rows="3"
+              placeholder="群公告"
+              maxlength="500"
+              show-word-limit
+              :disabled="!isCurrentUserGroupOwner"
+            />
+            <button
+              v-if="isCurrentUserGroupOwner"
+              class="compact-btn"
+              type="button"
+              @click="saveGroupProfile"
+            >
+              保存群资料
+            </button>
+          </div>
+
           <div class="group-invite">
             <el-input
               v-model="memberSearchKeyword"
@@ -249,6 +292,7 @@
     getConversationMembers,
     getConversations,
     removeConversationMember,
+    updateGroupProfile,
     uploadConversationImage
   } from '../api/conversations';
   import { getCurrentUser, searchUsers, updateAvatar, uploadAvatar } from '../api/users';
@@ -271,6 +315,9 @@
   const groupDetailConversation = ref(null);
   const groupMembers = ref([]);
   const currentGroupMember = ref(null);
+  const groupProfileName = ref('');
+  const groupProfileAnnouncement = ref('');
+  const groupProfileAvatarUrl = ref('');
   const memberSearchKeyword = ref('');
   const memberSearchResults = ref([]);
   const selectedInviteMemberIds = ref([]);
@@ -514,6 +561,9 @@
     groupDetailConversation.value = response.data.conversation;
     currentGroupMember.value = response.data.currentMember;
     groupMembers.value = response.data.members;
+    groupProfileName.value = response.data.conversation.name || '';
+    groupProfileAnnouncement.value = response.data.conversation.announcement || '';
+    groupProfileAvatarUrl.value = response.data.conversation.avatar_url || '';
   };
 
   const openGroupDetailDialog = async () => {
@@ -541,6 +591,31 @@
 
   const isGroupMember = (userId) => {
     return groupMembers.value.some((member) => member.id === userId);
+  };
+
+  const saveGroupProfile = async () => {
+    try {
+      const response = await updateGroupProfile(activeConversationId.value, {
+        name: groupProfileName.value,
+        announcement: groupProfileAnnouncement.value,
+        avatarUrl: groupProfileAvatarUrl.value
+      });
+
+      const updatedConversation = response.data.conversation;
+      groupDetailConversation.value = updatedConversation;
+      conversations.value = conversations.value.map((conversation) => {
+        if (conversation.id !== updatedConversation.id) return conversation;
+        return {
+          ...conversation,
+          name: updatedConversation.name,
+          avatar_url: updatedConversation.avatar_url,
+          announcement: updatedConversation.announcement
+        };
+      });
+      ElMessage.success('群资料已更新');
+    } catch (error) {
+      ElMessage.error(error.message || '更新群资料失败');
+    }
   };
 
   const submitInviteMembers = async () => {
@@ -1074,6 +1149,39 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
+    }
+
+    .group-profile-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid #edf1f7;
+      border-radius: 18px;
+      background: #fbfcfe;
+    }
+
+    .group-profile-heading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .group-avatar-preview {
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+    }
+
+    .group-section-title {
+      font-weight: 700;
+      color: #34435a;
+    }
+
+    .group-section-note {
+      margin-top: 3px;
+      color: #8b96a8;
+      font-size: 12px;
     }
 
     .group-detail-name {

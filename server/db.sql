@@ -14,6 +14,8 @@ CREATE TABLE conversations (
     id INT PRIMARY KEY AUTO_INCREMENT,
     type ENUM('direct', 'group') NOT NULL,
     name VARCHAR(100),
+    avatar_url VARCHAR(500),
+    announcement TEXT,
     owner_id INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
