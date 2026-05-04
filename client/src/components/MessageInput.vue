@@ -1,5 +1,5 @@
 <template>
-  <form @submit.prevent="sendMessage" class="message-form">
+  <form ref="composerRef" @submit.prevent="sendMessage" class="message-form">
     <textarea
       v-model="newMessage"
       placeholder="输入消息..."
@@ -10,25 +10,44 @@
     <div class="composer-footer">
       <span class="composer-hint">Enter 发送，Shift + Enter 换行</span>
       <div class="composer-actions">
-        <button class="emoji-btn" type="button" @click="toggleEmojiPicker">☻</button>
+        <button :class="['emoji-btn', { active: showEmojiPicker }]" type="button" @click="toggleEmojiPicker">☻</button>
         <button class="send-btn" type="submit" :disabled="!newMessage.trim()">➤</button>
       </div>
     </div>
-    <EmojiPicker v-if="showEmojiPicker" @onEmojiSelect="addEmoji" />
+    <div v-if="showEmojiPicker" class="emoji-popover">
+      <EmojiPicker @onEmojiSelect="addEmoji" />
+    </div>
   </form>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import EmojiPicker from './EmojiPicker.vue';
 
 const emit = defineEmits(['sendMessage']);
 
 const newMessage = ref('');
 const showEmojiPicker = ref(false);
+const composerRef = ref(null);
 
 const toggleEmojiPicker = () => {
   showEmojiPicker.value = !showEmojiPicker.value;
+};
+
+const closeEmojiPicker = () => {
+  showEmojiPicker.value = false;
+};
+
+const handleDocumentPointerDown = (event) => {
+  if (!showEmojiPicker.value) return;
+  if (composerRef.value?.contains(event.target)) return;
+  closeEmojiPicker();
+};
+
+const handleKeyDown = (event) => {
+  if (event.key === 'Escape') {
+    closeEmojiPicker();
+  }
 };
 
 const addEmoji = (emoji) => {
@@ -43,6 +62,16 @@ const sendMessage = () => {
     newMessage.value = '';
   }
 };
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDown);
+  document.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown);
+  document.removeEventListener('keydown', handleKeyDown);
+});
 </script>
 
 <style scoped>
@@ -60,6 +89,7 @@ const sendMessage = () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  z-index: 2;
 }
 
 textarea {
@@ -111,6 +141,18 @@ button {
   font-size: 18px;
 }
 
+.emoji-btn.active,
+.emoji-btn:hover {
+  background: #edf3f8;
+}
+
+.emoji-popover {
+  position: absolute;
+  right: 54px;
+  bottom: calc(100% + 12px);
+  z-index: 10;
+}
+
 .composer-hint {
   color: #60708d;
   font-size: 13px;
@@ -139,6 +181,10 @@ button {
     right: 10px;
     bottom: 10px;
     left: 10px;
+  }
+
+  .emoji-popover {
+    right: 0;
   }
 
   .composer-hint {
