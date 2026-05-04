@@ -1,16 +1,15 @@
 <template>
     <div class="chat-container">
       <aside class="conversation-list">
-        <div class="conversation-title">会话</div>
+        <button class="new-chat-btn" type="button" @click="openGroupDialog">新建聊天</button>
         <div class="conversation-actions">
           <input
             v-model="userSearchKeyword"
             class="user-search-input"
-            placeholder="搜索用户"
+            placeholder="搜索用户或邮箱"
             @keyup.enter="searchUserList"
           />
-          <button class="compact-btn" type="button" @click="searchUserList">搜索</button>
-          <button class="compact-btn ghost" type="button" @click="openGroupDialog">建群</button>
+          <button class="compact-btn icon-btn" type="button" @click="searchUserList">⌕</button>
         </div>
         <div v-if="searchedUsers.length" class="search-results">
           <button
@@ -51,6 +50,7 @@
       <main class="chat-main">
         <div class="chat-header">
           <div class="chat-title">
+            <span class="message-count">{{ messages.length }} 条消息</span>
             <h2>{{ activeConversationName }}</h2>
             <button
               v-if="isActiveGroup"
@@ -563,56 +563,81 @@
   </script>
   
   <style scoped>
+    :global(body) {
+      background: #fbfcfe;
+    }
+
     .chat-container {
       height: 100vh;
       display: flex;
-      background-color: #f5f5f5;
+      background:
+        radial-gradient(circle at 74% 16%, rgba(217, 226, 240, 0.32), transparent 28%),
+        linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+      color: #253247;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     }
 
     .conversation-list {
-      width: 240px;
-      background: white;
-      border-right: 1px solid #eee;
+      width: 248px;
+      background: rgba(255, 255, 255, 0.88);
+      border-right: 1px solid #edf1f7;
+      box-shadow: 12px 0 30px rgba(31, 45, 71, 0.04);
       display: flex;
       flex-direction: column;
-      padding: 16px 12px;
-      gap: 8px;
+      padding: 18px 12px 20px;
+      gap: 10px;
     }
 
-    .conversation-title {
-      font-size: 14px;
-      color: #666;
-      padding: 0 8px 8px;
+    .new-chat-btn {
+      width: 100%;
+      margin-bottom: 6px;
+      padding: 14px 18px;
+      border: none;
+      border-radius: 16px;
+      background: #e8edf4;
+      color: #1f2b3d;
+      font-size: 15px;
+      text-align: left;
+      box-shadow: none;
     }
 
     .conversation-actions {
       display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 6px;
-      margin-bottom: 8px;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 0 2px;
     }
 
     .user-search-input {
       min-width: 0;
-      padding: 8px;
-      border: 1px solid #eee;
-      border-radius: 6px;
+      padding: 11px 13px;
+      border: 1px solid #edf1f7;
+      border-radius: 14px;
+      background: #ffffff;
+      color: #415066;
       font-size: 13px;
     }
 
     .compact-btn {
       border: none;
-      background: #f56c6c;
-      color: white;
-      border-radius: 6px;
-      padding: 8px 10px;
+      background: #edf3f8;
+      color: #60708a;
+      border-radius: 12px;
+      padding: 9px 12px;
       font-size: 13px;
       cursor: pointer;
+      box-shadow: none;
     }
 
     .compact-btn.ghost {
-      background: #fff0f3;
-      color: #f56c6c;
+      background: #f5f8fb;
+      color: #60708a;
+    }
+
+    .icon-btn {
+      width: 42px;
+      font-size: 18px;
     }
 
     .search-results {
@@ -624,10 +649,10 @@
 
     .search-result {
       border: none;
-      background: #fafafa;
-      color: #333;
+      background: #f7f9fc;
+      color: #3d4a5f;
       padding: 8px 10px;
-      border-radius: 6px;
+      border-radius: 12px;
       display: flex;
       justify-content: space-between;
       cursor: pointer;
@@ -637,25 +662,27 @@
       width: 100%;
       border: none;
       background: transparent;
-      color: #333;
-      padding: 10px 12px;
-      border-radius: 6px;
+      color: #3d4a5f;
+      padding: 13px 20px;
+      border-radius: 15px;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 4px;
+      gap: 6px;
       cursor: pointer;
-      transition: background-color 0.2s;
+      box-shadow: none;
+      transition: background-color 0.2s, color 0.2s;
     }
 
     .conversation-item:hover,
     .conversation-item.active {
-      background: #fff0f3;
+      background: #e8edf4;
+      color: #1f2b3d;
     }
 
     .conversation-name {
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 15px;
+      font-weight: 500;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -663,7 +690,7 @@
 
     .conversation-type {
       font-size: 12px;
-      color: #999;
+      color: #8b96a8;
     }
 
     .conversation-main-row,
@@ -679,7 +706,7 @@
     .conversation-time,
     .conversation-preview {
       color: #999;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     .conversation-preview {
@@ -708,6 +735,8 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      position: relative;
+      background: rgba(255, 255, 255, 0.62);
     }
 
     .group-form {
@@ -801,26 +830,47 @@
     }
     
     .chat-header {
-      padding: 1rem 2rem;
-      background: #f56c6c;
-      color: white;
+      height: 62px;
+      padding: 0 28px;
+      background: rgba(255, 255, 255, 0.78);
+      color: #768196;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border-bottom: 1px solid #edf1f7;
+      box-shadow: none;
     }
 
     .chat-title {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
+      min-width: 0;
+      margin: 0 auto;
+      font-size: 14px;
+    }
+
+    .chat-title h2 {
+      margin: 0;
+      max-width: 320px;
+      overflow: hidden;
+      color: #7b879b;
+      font-size: 15px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .message-count {
+      color: #4d6590;
+      font-size: 14px;
     }
 
     .header-action-btn {
-      padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.18);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.35);
+      padding: 5px 9px;
+      background: #f3f6fa;
+      color: #67758f;
+      border: 1px solid #e7edf5;
       border-radius: 999px;
       font-size: 12px;
     }
@@ -828,44 +878,49 @@
     .user-info {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 12px;
+      color: #77849a;
+      font-size: 14px;
     }
     
     .logout-btn {
-      padding: 0.5rem 1rem;
-      background: white;
-      color: #f56c6c;
-      border: none;
-      border-radius: 4px;
+      padding: 7px 12px;
+      background: #f5f8fb;
+      color: #67758f;
+      border: 1px solid #e8eef6;
+      border-radius: 999px;
       cursor: pointer;
       transition: background-color 0.3s;
     }
     
     .logout-btn:hover {
-      background: #f0f0f0;
+      background: #edf3f8;
     }
     
     .messages {
       flex: 1;
       overflow-y: auto;
-      padding: 20px;
+      padding: 36px 9vw 176px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 14px;
     }
     
     .message {
-      padding: 10px;
-      border-radius: 8px;
-      background: white;
-      max-width: 70%;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      padding: 12px 14px;
+      border: 1px solid #edf1f7;
+      border-radius: 18px 18px 18px 6px;
+      background: #ffffff;
+      max-width: min(680px, 72%);
+      box-shadow: 0 12px 30px rgba(50, 64, 92, 0.06);
       word-break: break-word;
     }
     
     .my-message {
       margin-left: auto;
-      background: #dcf8c6;
+      border-color: #dfe8f2;
+      border-radius: 18px 18px 6px 18px;
+      background: #eef4fb;
     }
     
     .message-header {
@@ -878,23 +933,15 @@
     
     .username {
       font-weight: bold;
-      color: #f56c6c;
+      color: #587092;
     }
     
     .time {
-      color: #666;
+      color: #9aa5b6;
     }
     
     .message-content {
       line-height: 1.4;
-    }
-    
-    .message-form {
-      padding: 20px;
-      background: white;
-      display: flex;
-      gap: 10px;
-      box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
     }
     
     input {
