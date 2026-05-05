@@ -209,8 +209,9 @@ router.get('/:id/messages', async (req, res) => {
     }
 
     const limit = Number(req.query.limit || 50);
-    const messages = await Message.getRecentMessages(conversationId, limit);
-    res.json({ messages });
+    const beforeMessageId = req.query.beforeMessageId || null;
+    const page = await Message.getMessagePage(conversationId, { limit, beforeMessageId });
+    res.json(page);
   } catch (error) {
     console.error('获取会话消息失败:', error);
     res.status(500).json({ message: '获取会话消息失败' });

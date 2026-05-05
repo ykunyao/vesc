@@ -68,16 +68,20 @@ io.on('connection', async (socket) => {
   // 获取历史消息
   const getMessages = async (conversationId) => {
     try {
-      const messages = await Message.getRecentMessages(conversationId, 50);
-      if (messages && Array.isArray(messages)) {
-        socket.emit('history messages', { conversationId, messages });
+      const page = await Message.getMessagePage(conversationId, { limit: 50 });
+      if (page.messages && Array.isArray(page.messages)) {
+        socket.emit('history messages', {
+          conversationId,
+          messages: page.messages,
+          hasMore: page.hasMore
+        });
       } else {
         console.log('没有历史消息或消息格式不正确');
-        socket.emit('history messages', { conversationId, messages: [] });
+        socket.emit('history messages', { conversationId, messages: [], hasMore: false });
       }
     } catch (error) {
       console.log('获取历史消息时发生错误，返回空数组');
-      socket.emit('history messages', { conversationId, messages: [] });
+      socket.emit('history messages', { conversationId, messages: [], hasMore: false });
     }
   };
 

@@ -39,13 +39,34 @@ class Message {
     }
   }
 
-  static async getRecentMessages(conversationId, limit = 50) {
+  static normalizeLimit(limit) {
+    const messageLimit = parseInt(limit, 10);
+    if (!Number.isInteger(messageLimit) || messageLimit <= 0) {
+      throw new Error('limit 必须是正整数');
+    }
+
+    return Math.min(messageLimit, 100);
+  }
+
+  static async getMessagePage(conversationId, { limit = 50, beforeMessageId = null } = {}) {
     try {
-      const messageLimit = parseInt(limit, 10);
-      if (!Number.isInteger(messageLimit) || messageLimit <= 0) {
-        throw new Error('limit 必须是正整数');
+      const messageLimit = this.normalizeLimit(limit);
+      const beforeId = beforeMessageId === null || beforeMessageId === undefined || beforeMessageId === ''
+        ? null
+        : Number(beforeMessageId);
+
+      if (beforeId !== null && (!Number.isInteger(beforeId) || beforeId <= 0)) {
+        throw new Error('beforeMessageId 必须是正整数');
       }
 
+      const params = [conversationId];
+      let beforeClause = '';
+      if (beforeId !== null) {
+        beforeClause = 'AND m.id < ?';
+        params.push(beforeId);
+      }
+
+      const queryLimit = messageLimit + 1;
       const [messages] = await pool.query(`
         SELECT 
           m.id,
@@ -62,11 +83,28 @@ class Message {
         JOIN users u ON m.sender_id = u.id 
         WHERE m.conversation_id = ?
           AND m.status <> 'deleted'
-        ORDER BY m.created_at DESC
-        LIMIT ${messageLimit}
-      `, [conversationId]);
+          ${beforeClause}
+        ORDER BY m.id DESC
+        LIMIT ${queryLimit}
+      `, params);
 
-      return messages.reverse(); // 反转消息顺序，使旧消息在前，新消息在后
+      const hasMore = messages.length > messageLimit;
+      const pageMessages = hasMore ? messages.slice(0, messageLimit) : messages;
+
+      return {
+        messages: pageMessages.reverse(),
+        hasMore
+      };
+    } catch (error) {
+      console.log('获取消息失败:', error);
+      throw error;
+    }
+  }
+
+  static async getRecentMessages(conversationId, limit = 50) {
+    try {
+      const page = await this.getMessagePage(conversationId, { limit });
+      return page.messages;
     } catch (error) {
       console.log('获取消息失败:', error);
       throw error;

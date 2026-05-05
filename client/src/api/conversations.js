@@ -4,8 +4,8 @@ export const getConversations = () => {
   return http.get('/api/conversations')
 }
 
-export const getConversationMessages = (conversationId) => {
-  return http.get(`/api/conversations/${conversationId}/messages`)
+export const getConversationMessages = (conversationId, params = {}) => {
+  return http.get(`/api/conversations/${conversationId}/messages`, { params })
 }
 
 export const createDirectConversation = (userId) => {

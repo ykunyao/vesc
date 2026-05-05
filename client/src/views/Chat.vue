@@ -90,50 +90,23 @@
           </div>
         </div>
   
-        <div class="messages" ref="messagesContainer">
-          <template
-            v-for="msg in messages"
-            :key="msg.id"
-          >
-            <div v-if="msg.status === 'revoked'" class="system-message-row">
-              <span>{{ formatRevokedMessage(msg) }}</span>
-            </div>
-            <div
-              v-else
-              :class="['message-row', { 'my-message-row': msg.sender_id === currentUserId }]"
-            >
-              <span class="avatar message-avatar" :style="avatarStyle(msg.avatar_url, msg.username)">
-                <span v-if="!msg.avatar_url">{{ avatarText(msg.username) }}</span>
-              </span>
-              <div :class="['message', { 'my-message': msg.sender_id === currentUserId }]">
-                <div class="message-header">
-                  <span class="username">{{ msg.username }}</span>
-                  <span class="time">{{ formatTime(msg.created_at) }}</span>
-                </div>
-                <button
-                  v-if="msg.message_type === 'image'"
-                  class="message-image-btn"
-                  type="button"
-                  @click="previewImage(msg.media_url)"
-                >
-                  <img :src="resolveMediaUrl(msg.media_url)" alt="聊天图片" />
-                </button>
-                <div v-else class="message-content">{{ msg.content }}</div>
-                <div class="message-actions">
-                  <button
-                    v-if="msg.message_type === 'text'"
-                    type="button"
-                    @click="copyMessage(msg)"
-                  >
-                    复制
-                  </button>
-                  <button v-if="canManageMessage(msg)" type="button" @click="deleteMessage(msg)">删除</button>
-                  <button v-if="canManageMessage(msg)" type="button" @click="revokeMessage(msg)">撤回</button>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
+        <ChatMessageList
+          ref="messageListRef"
+          :messages="messages"
+          :current-user-id="currentUserId"
+          :has-more="hasMoreMessages"
+          :loading-older="loadingOlderMessages"
+          :avatar-style="avatarStyle"
+          :avatar-text="avatarText"
+          :format-time="formatTime"
+          :resolve-media-url="resolveMediaUrl"
+          :can-manage-message="canManageMessage"
+          @loadOlder="loadOlderMessages"
+          @previewImage="previewImage"
+          @copyMessage="copyMessage"
+          @deleteMessage="deleteMessage"
+          @revokeMessage="revokeMessage"
+        />
   
         <MessageInput @sendMessage="sendMessage" @sendImage="sendImageMessage" />
       </main>
@@ -365,14 +338,16 @@
   </template>
   
   <script setup>
-  import { ref, computed, inject, onMounted, onUnmounted, nextTick } from 'vue';
+  import { ref, computed, inject, onMounted, onUnmounted } from 'vue';
   import { ElMessage } from 'element-plus';
   import { useRouter } from 'vue-router';
+  import ChatMessageList from '../components/ChatMessageList.vue';
   import MessageInput from '../components/MessageInput.vue';
   import {
     addConversationMembers,
     createDirectConversation,
     createGroupConversation,
+    getConversationMessages,
     getConversationMembers,
     getConversations,
     removeConversationMember,
@@ -420,12 +395,14 @@
   const selectedInviteMemberIds = ref([]);
   const unreadCounts = ref({});
   const messages = ref([]);
+  const hasMoreMessages = ref(false);
+  const loadingOlderMessages = ref(false);
   const currentUserId = ref(null);
   const currentUsername = ref('');
   const currentAvatarUrl = ref('');
   const avatarDialogVisible = ref(false);
   const avatarDraftUrl = ref('');
-  const messagesContainer = ref(null);
+  const messageListRef = ref(null);
 
   const activeConversationName = computed(() => {
     return activeConversation.value?.name || ':)';
@@ -444,10 +421,7 @@
   });
   
   const scrollToBottom = async () => {
-    await nextTick();
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-    }
+    await messageListRef.value?.scrollToBottom();
   };
 
   const resetUnreadCount = (conversationId) => {
@@ -565,9 +539,10 @@
       });
     });
   
-    socket.value.on('history messages', ({ conversationId, messages: msgs }) => {
+    socket.value.on('history messages', ({ conversationId, messages: msgs, hasMore = false }) => {
       if (conversationId !== activeConversationId.value) return;
       messages.value = msgs;
+      hasMoreMessages.value = hasMore;
       resetUnreadCount(conversationId);
       scrollToBottom();
     });
@@ -607,10 +582,35 @@
   const selectConversation = (conversationId) => {
     activeConversationId.value = conversationId;
     messages.value = [];
+    hasMoreMessages.value = false;
+    loadingOlderMessages.value = false;
     resetUnreadCount(conversationId);
 
     if (socket.value) {
       socket.value.emit('join conversation', conversationId);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!activeConversationId.value || loadingOlderMessages.value || !hasMoreMessages.value || messages.value.length === 0) {
+      return;
+    }
+
+    loadingOlderMessages.value = true;
+    const snapshot = messageListRef.value?.getScrollSnapshot();
+
+    try {
+      const response = await getConversationMessages(activeConversationId.value, {
+        beforeMessageId: messages.value[0].id,
+        limit: 50
+      });
+      messages.value = [...response.data.messages, ...messages.value];
+      hasMoreMessages.value = response.data.hasMore;
+      await messageListRef.value?.restoreScrollFromSnapshot(snapshot);
+    } catch (error) {
+      ElMessage.error(error.message || '加载历史消息失败');
+    } finally {
+      loadingOlderMessages.value = false;
     }
   };
 
@@ -1601,147 +1601,6 @@
       background: #edf3f8;
     }
     
-    .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 30px 28px 214px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    
-    .message {
-      position: relative;
-      padding: 12px 14px;
-      border: 1px solid #edf1f7;
-      border-radius: 18px 18px 18px 6px;
-      background: #ffffff;
-      max-width: min(680px, 100%);
-      min-width: 0;
-      box-shadow: 0 12px 30px rgba(50, 64, 92, 0.06);
-      word-break: break-word;
-    }
-
-    .message-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      max-width: min(720px, 76%);
-    }
-
-    .system-message-row {
-      align-self: center;
-      max-width: min(520px, 82%);
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: rgba(232, 237, 244, 0.68);
-      color: #8b96a8;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .my-message-row {
-      flex-direction: row-reverse;
-      align-self: flex-end;
-    }
-
-    .message-avatar {
-      width: 34px;
-      height: 34px;
-      border-radius: 12px;
-      margin-top: 2px;
-      font-size: 12px;
-    }
-    
-    .my-message {
-      border-color: #dfe8f2;
-      border-radius: 18px 18px 6px 18px;
-      background: #eef4fb;
-    }
-    
-    .message-header {
-      margin-bottom: 5px;
-      font-size: 0.8em;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      white-space: nowrap;
-    }
-    
-    .username {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: bold;
-      color: #587092;
-    }
-    
-    .time {
-      flex-shrink: 0;
-      color: #9aa5b6;
-    }
-    
-    .message-content {
-      line-height: 1.4;
-    }
-
-    .message-image-btn {
-      display: block;
-      max-width: min(320px, 58vw);
-      padding: 0;
-      overflow: hidden;
-      border: none;
-      border-radius: 14px;
-      background: transparent;
-      box-shadow: none;
-      cursor: zoom-in;
-    }
-
-    .message-image-btn img {
-      display: block;
-      max-width: 100%;
-      max-height: 260px;
-      object-fit: cover;
-    }
-
-    .message-actions {
-      position: absolute;
-      top: calc(100% - 2px);
-      left: 8px;
-      z-index: 2;
-      display: flex;
-      gap: 8px;
-      margin-top: 0;
-      padding: 8px 4px 4px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.18s;
-    }
-
-    .my-message .message-actions {
-      right: 8px;
-      left: auto;
-    }
-
-    .message:hover .message-actions,
-    .message-actions:hover {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .message-actions button {
-      padding: 3px 6px;
-      border: none;
-      border-radius: 8px;
-      background: #edf3f8;
-      color: #60708a;
-      font-size: 12px;
-      box-shadow: none;
-    }
-
     .avatar-form {
       display: flex;
       flex-direction: column;
@@ -1802,21 +1661,4 @@
       cursor: not-allowed;
     }
     
-    /* 滚动条样式 */
-    .messages::-webkit-scrollbar {
-      width: 6px;
-    }
-    
-    .messages::-webkit-scrollbar-track {
-      background: #f1f1f1;
-    }
-    
-    .messages::-webkit-scrollbar-thumb {
-      background: #888;
-      border-radius: 3px;
-    }
-    
-    .messages::-webkit-scrollbar-thumb:hover {
-      background: #555;
-    }
   </style>
